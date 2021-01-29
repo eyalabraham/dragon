@@ -3,6 +3,7 @@
  *
  *  MC6809E CPU emulation, main module.
  *  Use this module to test and run MC6809E CPU emulation and machine code.
+ *  See README.md in the include/test directory
  *
  *  January 8, 2021
  *
@@ -38,9 +39,9 @@ void print_decorated_cc(uint8_t cc);
  */
 int main(int argc, char *argv[])
 {
-    int         i = 0;
+    int             i;
+    uint16_t        break_point = 0xffff;
     cpu_state_t     cpu_state;
-    cpu_run_state_t cpu_run_state = NOT_DEFINED;
 
     /* Load test code
      */
@@ -60,7 +61,7 @@ int main(int argc, char *argv[])
     cpu_init(RUN_ADDRESS);
 
     printf("Breakpoint set at 0x%04x.\n", (i + LOAD_ADDRESS - 1));
-    cpu_set_brkpt(i + LOAD_ADDRESS - 1);
+    break_point = (i + LOAD_ADDRESS - 1);
 
     /* Execution loop
      */
@@ -69,16 +70,17 @@ int main(int argc, char *argv[])
 
     printf("PC=0x%04x | ", RUN_ADDRESS);
 
-    while ( cpu_run_state != CPU_BRKPT )
+    do
     {
         cpu_run();
-        cpu_run_state = cpu_get_state(&cpu_state);
+        cpu_get_state(&cpu_state);
         print_registers(&cpu_state);
 
         /* Simple way to manually single-step
          */
         getchar();
     }
+    while ( cpu_state.pc != break_point );
 
     printf("Stopped at breakpoint.\n");
 

@@ -7,8 +7,6 @@
  *
  *******************************************************************/
 
-#include    <string.h>
-
 #include    "config.h"
 #include    "mem.h"
 #include    "rpi.h"
@@ -17,29 +15,29 @@
    Local definitions
 ----------------------------------------- */
 
-#define     IO_HANDLERS             256         // IO device handler callbacks
+typedef enum
+{
+    MEM_TYPE_RAM,
+    MEM_TYPE_ROM,
+    MEM_TYPE_IO,
+} memory_flag_t;
 
-#define     MEM_FLAG_ROM            0x80000000  // Memory location is read-only
-#define     MEM_FLAG_IO             0x40000000  // Memory location is a registered memory mapped IO device
-#define     MEM_MASK_CALLBACK       0x00ff0000  // Index to list of 256 IO device handler callbacks
-#define     MEM_MASK_DATA           0x000000ff  // Mask data bits
-#define     MEM_MASK_FLAGS          (MEM_FLAG_ROM | MEM_FLAG_IO)
+typedef struct
+{
+    uint8_t data_byte;
+    memory_flag_t memory_type;
+    io_handler_callback io_handler;
+} memory_t;
 
 /* -----------------------------------------
    Module static functions
 ----------------------------------------- */
-static void do_nothing_io_handler(int addr, int data);
+static uint8_t do_nothing_io_handler(uint16_t address, uint8_t data, mem_operation_t op);
 
 /* -----------------------------------------
    Module globals
 ----------------------------------------- */
-
-/* b07..b00  8 least significant bits are memory location data
- * b23..b16  8 bits holding index to a list of 256 callbacks for memory-mapped IO device handlers  
- * b31..b24  8 most significant bit are flags
- */
-static uint32_t    memory[MEMORY];
-static void        (*io_handlers[IO_HANDLERS])(int, int);
+static memory_t memory[MEMORY];
 
 /*------------------------------------------------
  * mem_init()
@@ -53,9 +51,12 @@ void mem_init(void)
 {
     int i;
 
-    memset(memory, 0, sizeof(memory));
-    for (i = 0; i < IO_HANDLERS; i++)
-        io_handlers[i] = do_nothing_io_handler;
+    for ( i = 0; i < MEMORY; i++ )
+    {
+        memory[i].data_byte = 0;
+        memory[i].memory_type = MEM_TYPE_RAM;
+        memory[i].io_handler = do_nothing_io_handler;
+    }
 }
 
 /*------------------------------------------------
@@ -72,7 +73,16 @@ int mem_read(int address)
     if ( address < 0 || address > (MEMORY-1) )
         return MEM_ADD_RANGE;
 
-    return (int)(memory[address] & MEM_MASK_DATA);
+    if ( memory[address].memory_type == MEM_TYPE_IO &&
+         memory[address].io_handler != do_nothing_io_handler )
+    {
+        /* An attempt to read an IO address will trigger
+         * the callback that may return an alternative value.
+         */
+        memory[address].data_byte = memory[address].io_handler((uint16_t) address, memory[address].data_byte, MEM_READ);
+    }
+
+    return (int)(memory[address].data_byte);
 }
 
 /*------------------------------------------------
@@ -87,22 +97,18 @@ int mem_read(int address)
  */
 int mem_write(int address, int data)
 {
-    register uint32_t   memory_cell;
-    register int        callback_index;
-
     if ( address < 0 || address > (MEMORY-1) )
         return MEM_ADD_RANGE;
 
-    if ( memory[address] & MEM_FLAG_ROM )
+    if ( memory[address].memory_type == MEM_TYPE_ROM )
         return MEM_ROM;
 
-    memory_cell = ((memory[address] & ~MEM_MASK_DATA) | ((uint32_t)data & MEM_MASK_DATA));
-    memory[address] = memory_cell;
+    memory[address].data_byte = (uint8_t) data;
 
-    if ( memory_cell & MEM_FLAG_IO )
+    if ( memory[address].memory_type == MEM_TYPE_IO &&
+         memory[address].io_handler != do_nothing_io_handler )
     {
-        callback_index = (int)((data & MEM_MASK_CALLBACK) >> 16);
-        io_handlers[callback_index](address, (int)(memory[address] & MEM_MASK_DATA));
+        memory[address].io_handler((uint16_t) address, (uint8_t)data, MEM_WRITE);
     }
 
     return MEM_OK;
@@ -111,9 +117,10 @@ int mem_write(int address, int data)
 /*------------------------------------------------
  * mem_define_rom()
  *
- *  Define address range as ROM
+ *  Define address range as ROM.
+ *  Function clears IO flag and callback index.
  *
- *  param:  Memory address range start and end
+ *  param:  Memory address range start and end, inclusive
  *  return: ' 0' - write ok,
  *          '-1' - memory location is out of range
  */
@@ -128,8 +135,10 @@ int  mem_define_rom(int addr_start, int addr_end)
 
     disable();
 
-    for (i = addr_start; i < addr_end; i++)
-        memory[i] |= MEM_FLAG_ROM;
+    for (i = addr_start; i <= addr_end; i++)
+    {
+        memory[i].memory_type = MEM_TYPE_ROM;
+    }
 
     enable();
 
@@ -139,13 +148,16 @@ int  mem_define_rom(int addr_start, int addr_end)
 /*------------------------------------------------
  * mem_define_io()
  *
- *  Define IO device address range and callback handler
+ *  Define IO device address range and optional callback handler
+ *  Function clears ROM flag.
  *
- *  param:  Memory address range start and end, IO handler callback for the range
+ *  param:  Memory address range start to end, inclusive
+ *          IO handler callback for the range or NULL
  *  return: ' 0' - write ok,
  *          '-1' - memory location is out of range
+ *          '-3' - Cannot hook IO handler
  */
-int  mem_define_io(int addr_start, int addr_end, void (*io_handler)(int, int))
+int  mem_define_io(int addr_start, int addr_end, io_handler_callback io_handler)
 {
     int i;
 
@@ -156,10 +168,11 @@ int  mem_define_io(int addr_start, int addr_end, void (*io_handler)(int, int))
 
     disable();
 
-    for (i = addr_start; i < addr_end; i++)
+    for (i = addr_start; i <= addr_end; i++)
     {
-        /* TODO Hook IO callback */
-        memory[i] |= MEM_FLAG_IO;
+        memory[i].memory_type = MEM_TYPE_IO;
+        if ( io_handler != 0L )
+            memory[i].io_handler = io_handler;
     }
 
     enable();
@@ -190,7 +203,7 @@ int mem_load(int addr_start, int *buffer, int length)
 
     for (i = 0; i < length; i++)
     {
-        memory[(i+addr_start)] = (uint32_t)buffer[i] & MEM_MASK_DATA;
+        memory[(i+addr_start)].data_byte = (uint8_t)buffer[i];
     }
 
     enable();
@@ -206,9 +219,10 @@ int mem_load(int addr_start, int *buffer, int length)
  *  param:  Nothing
  *  return: Nothing
  */
-static void do_nothing_io_handler(int addr, int data)
+static uint8_t do_nothing_io_handler(uint16_t address, uint8_t data, mem_operation_t op)
 {
     /* do nothing */
     /* TODO generate an exception? */
+    return 0;
 }
 

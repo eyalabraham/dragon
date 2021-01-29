@@ -22,8 +22,7 @@ typedef enum
     CPU_HALTED      = 1,    // Is halted
     CPU_SYNC        = 2,    // Waiting in SYNC state (for 'sync' and 'cwai')
     CPU_RESET       = 4,    // Held in reset
-    CPU_BRKPT       = 5,    // Stopped at break-point
-    CPU_EXCEPTION   = 6,    // Signal an emulation exception (bad op-code)
+    CPU_EXCEPTION   = 5,    // Signal an emulation exception (bad op-code)
 } cpu_run_state_t;
 
 /* MC6809E CPU state
@@ -73,7 +72,6 @@ void cpu_firq(int state);
 void cpu_irq(int state);
 
 cpu_run_state_t cpu_run(void);
-int             cpu_set_brkpt(int brkpt_address);
 
 cpu_run_state_t cpu_get_state(cpu_state_t* cpu_state);
 const char*     cpu_get_menmonic(uint16_t address);

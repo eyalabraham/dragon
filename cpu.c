@@ -15,7 +15,7 @@
  *
  *******************************************************************/
 
-#include    <stdio.h>
+//#include    <stdio.h> // Temporary for occasional printf() debug
 #include    <string.h>
 
 #include    "config.h"
@@ -153,8 +153,6 @@ static struct cc_t
 } cc;
 
 #define     d       ((uint16_t)(((uint16_t)cpu.a << 8) + cpu.b))    // Accumulator D
-
-static int  break_point_address;
 
 /*------------------------------------------------
  * cpu_init()
@@ -297,6 +295,8 @@ cpu_run_state_t cpu_run(void)
         cc.i = CC_FLAG_SET;
         cpu.dp = 0;
         cpu.nmi_armed = 0;
+        bytes = 0;
+        cycles = 0;
         cpu.cpu_state = CPU_RESET;
         cpu.pc = (mem_read(VEC_RESET) << 8) + mem_read(VEC_RESET+1);
         cpu.last_pc = cpu.pc;
@@ -408,7 +408,7 @@ cpu_run_state_t cpu_run(void)
             }
 
             eff_addr = get_eff_addr(op_code_index, &cycles, &bytes);
-            operand8 = (uint8_t) mem_read(eff_addr);
+
             switch ( op_code )
             {
                 /* CMPD
@@ -417,6 +417,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x93:
                 case 0xa3:
                 case 0xb3:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
                     operand16 = ((uint16_t) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     cmp16(d, operand16);
@@ -428,6 +429,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x9c:
                 case 0xac:
                 case 0xbc:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
                     operand16 = ((uint16_t) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     cmp16(cpu.y, operand16);
@@ -439,6 +441,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xde:
                 case 0xee:
                 case 0xfe:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
                     cpu.s = ((uint16_t) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     eval_cc_z16(cpu.s);
@@ -452,6 +455,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x9e:
                 case 0xae:
                 case 0xbe:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
                     cpu.y = ((uint16_t) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     eval_cc_z16(cpu.y);
@@ -495,6 +499,12 @@ cpu_run_state_t cpu_run(void)
                     branch(op_code, 1, eff_addr, &cycles);
                     break;
 
+                /* SWI2
+                 */
+                case 0x3f:
+                    swi(2);
+                    break;
+
                 default:
                     /* Exception
                      */
@@ -524,7 +534,7 @@ cpu_run_state_t cpu_run(void)
             }
 
             eff_addr = get_eff_addr(op_code_index, &cycles, &bytes);
-            operand8 = (uint8_t) mem_read(eff_addr);
+
             switch ( op_code )
             {
                 /* CMPU
@@ -533,6 +543,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x93:
                 case 0xa3:
                 case 0xb3:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
                     operand16 = ((uint16_t) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     cmp16(cpu.u, operand16);
@@ -544,9 +555,16 @@ cpu_run_state_t cpu_run(void)
                 case 0x9c:
                 case 0xac:
                 case 0xbc:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
                     operand16 = ((uint16_t) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     cmp16(cpu.s, operand16);
+                    break;
+
+                /* SWI3
+                 */
+                case 0x3f:
+                    swi(3);
                     break;
 
                 default:
@@ -560,16 +578,14 @@ cpu_run_state_t cpu_run(void)
          */
         else
         {
-            /* 'operand8' = 0 for things such as inherent addressing.
-             * 'operand8' will be operand byte, and for a 16-bit operand 'operand8'
-             * will be the low byte and high byte should be read separately and combined
-             * into 16-bit value.
-             * TODO may want to skip and avoid spending cycles for INHERENT address op-codes
+            /* 'operand8' will be operand byte, and for a 16-bit operand 'operand8'
+             * will be the high order byte and low order byte should be read separately
+             * and combined into 16-bit value.
              */
             cycles = machine_code[op_code].cycles;
             bytes = machine_code[op_code].bytes;
+
             eff_addr = get_eff_addr(op_code, &cycles, &bytes);
-            operand8 = (uint8_t) mem_read(eff_addr);
 
             switch ( op_code )
             {
@@ -585,6 +601,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x99:
                 case 0xa9:
                 case 0xb9:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.a = adc(cpu.a, operand8);
                     break;
 
@@ -594,6 +611,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xd9:
                 case 0xe9:
                 case 0xf9:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.b = adc(cpu.b, operand8);
                     break;
 
@@ -603,6 +621,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x9b:
                 case 0xab:
                 case 0xbb:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.a = add(cpu.a, operand8);
                     break;
 
@@ -612,6 +631,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xdb:
                 case 0xeb:
                 case 0xfb:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.b = add(cpu.b, operand8);
                     break;
 
@@ -621,6 +641,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xd3:
                 case 0xe3:
                 case 0xf3:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
                     operand16 = ((uint16_t) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     addd(operand16);
@@ -632,6 +653,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x94:
                 case 0xa4:
                 case 0xb4:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.a = and(cpu.a, operand8);
                     break;
 
@@ -641,12 +663,14 @@ cpu_run_state_t cpu_run(void)
                 case 0xd4:
                 case 0xe4:
                 case 0xf4:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.b = and(cpu.b, operand8);
                     break;
 
                 /* ANDCC
                  */
                 case 0x1c:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     andcc(operand8);
                     break;
 
@@ -656,6 +680,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x08:
                 case 0x68:
                 case 0x78:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     operand8 = asl(operand8);
                     mem_write(eff_addr, operand8);
                     break;
@@ -673,6 +698,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x07:
                 case 0x67:
                 case 0x77:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     operand8 = asr(operand8);
                     mem_write(eff_addr, operand8);
                     break;
@@ -691,6 +717,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x95:
                 case 0xa5:
                 case 0xb5:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     bit(cpu.a, operand8);
                     break;
 
@@ -700,6 +727,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xd5:
                 case 0xe5:
                 case 0xf5:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     bit(cpu.b, operand8);
                     break;
 
@@ -726,6 +754,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x91:
                 case 0xa1:
                 case 0xb1:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cmp(cpu.a, operand8);
                     break;
 
@@ -735,6 +764,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xd1:
                 case 0xe1:
                 case 0xf1:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cmp(cpu.b, operand8);
                     break;
 
@@ -744,8 +774,9 @@ cpu_run_state_t cpu_run(void)
                 case 0x9c:
                 case 0xac:
                 case 0xbc:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
-                    operand16 = (uint16_t) operand8 + (uint16_t) mem_read(eff_addr);
+                    operand16 = ((uint16_t) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     cmp16(cpu.x, operand16);
                     break;
 
@@ -754,6 +785,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x03:
                 case 0x63:
                 case 0x73:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     operand8 = com(operand8);
                     mem_write(eff_addr, operand8);
                     break;
@@ -769,6 +801,7 @@ cpu_run_state_t cpu_run(void)
                 /* CWAI
                  */
                 case 0x3c:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cwai(operand8);
                     break;
 
@@ -783,6 +816,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x0a:
                 case 0x6a:
                 case 0x7a:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     operand8 = dec(operand8);
                     mem_write(eff_addr, operand8);
                     break;
@@ -801,6 +835,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x98:
                 case 0xa8:
                 case 0xb8:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.a = eor(cpu.a, operand8);
                     break;
 
@@ -810,12 +845,14 @@ cpu_run_state_t cpu_run(void)
                 case 0xd8:
                 case 0xe8:
                 case 0xf8:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.b = eor(cpu.b, operand8);
                     break;
 
                 /* EXG
                  */
                 case 0x1e:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     exg(operand8);
                     break;
 
@@ -824,6 +861,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x0c:
                 case 0x6c:
                 case 0x7c:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     operand8 = inc(operand8);
                     mem_write(eff_addr, operand8);
                     break;
@@ -862,7 +900,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x96:
                 case 0xa6:
                 case 0xb6:
-                    cpu.a = operand8;
+                    cpu.a = (uint8_t) mem_read(eff_addr);;
                     eval_cc_z((uint16_t) cpu.a);
                     eval_cc_n((uint16_t) cpu.a);
                     cc.v = CC_FLAG_CLR;
@@ -874,7 +912,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xd6:
                 case 0xe6:
                 case 0xf6:
-                    cpu.b = operand8;
+                    cpu.b = (uint8_t) mem_read(eff_addr);;
                     eval_cc_z((uint16_t) cpu.b);
                     eval_cc_n((uint16_t) cpu.b);
                     cc.v = CC_FLAG_CLR;
@@ -886,7 +924,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xdc:
                 case 0xec:
                 case 0xfc:
-                    cpu.a = operand8;
+                    cpu.a = (uint8_t) mem_read(eff_addr);;
                     eff_addr++;
                     cpu.b = (uint8_t) mem_read(eff_addr);
                     eval_cc_z16(d);
@@ -900,6 +938,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xde:
                 case 0xee:
                 case 0xfe:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
                     cpu.u = ((uint16_t) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     eval_cc_z16(cpu.u);
@@ -913,6 +952,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x9e:
                 case 0xae:
                 case 0xbe:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
                     cpu.x = ((uint16_t) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     eval_cc_z16(cpu.x);
@@ -945,6 +985,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x04:
                 case 0x64:
                 case 0x74:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     operand8 = lsr(operand8);
                     mem_write(eff_addr, operand8);
                     break;
@@ -972,6 +1013,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x00:
                 case 0x60:
                 case 0x70:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     operand8 = neg(operand8);
                     mem_write(eff_addr, operand8);
                     break;
@@ -995,6 +1037,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x9a:
                 case 0xaa:
                 case 0xba:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.a = or(cpu.a, operand8);
                     break;
 
@@ -1002,32 +1045,38 @@ cpu_run_state_t cpu_run(void)
                 case 0xda:
                 case 0xea:
                 case 0xfa:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.b = or(cpu.b, operand8);
                     break;
 
                 /* ORCC
                  */
                 case 0x1a:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     orcc(operand8);
                     break;
 
                 /* PSHS, PSHU
                  */
                 case 0x34:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     pshs(operand8, &cycles);
                     break;
 
                 case 0x36:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     pshu(operand8, &cycles);
                     break;
 
                 /* PULS, PULU
                  */
                 case 0x35:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     puls(operand8, &cycles);
                     break;
 
                 case 0x37:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     pulu(operand8, &cycles);
                     break;
 
@@ -1036,6 +1085,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x09:
                 case 0x69:
                 case 0x79:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     operand8 = rol(operand8);
                     mem_write(eff_addr, operand8);
                     break;
@@ -1053,6 +1103,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x06:
                 case 0x66:
                 case 0x76:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     operand8 = ror(operand8);
                     mem_write(eff_addr, operand8);
                     break;
@@ -1090,6 +1141,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x92:
                 case 0xa2:
                 case 0xb2:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.a = sbc(cpu.a, operand8);
                     break;
 
@@ -1099,6 +1151,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xd2:
                 case 0xe2:
                 case 0xf2:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.b = sbc(cpu.b, operand8);
                     break;
 
@@ -1172,6 +1225,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x90:
                 case 0xa0:
                 case 0xb0:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.a = sub(cpu.a, operand8);
                     break;
 
@@ -1181,6 +1235,7 @@ cpu_run_state_t cpu_run(void)
                 case 0xd0:
                 case 0xe0:
                 case 0xf0:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     cpu.b = sub(cpu.b, operand8);
                     break;
 
@@ -1190,6 +1245,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x93:
                 case 0xa3:
                 case 0xb3:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     eff_addr++;
                     operand16 = ((uint16_t ) operand8 << 8) + (uint16_t) mem_read(eff_addr);
                     subd(operand16);
@@ -1214,6 +1270,7 @@ cpu_run_state_t cpu_run(void)
                 /* TFR
                  */
                 case 0x1f:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     tfr(operand8);
                     break;
 
@@ -1234,6 +1291,7 @@ cpu_run_state_t cpu_run(void)
                 case 0x0d:
                 case 0x6d:
                 case 0x7d:
+                    operand8 = (uint8_t) mem_read(eff_addr);
                     tst(operand8);
                     break;
 
@@ -1279,12 +1337,7 @@ cpu_run_state_t cpu_run(void)
          */
     }
 
-    /* Assert break point state
-     */
-    if ( cpu.pc == break_point_address )
-        cpu.cpu_state = CPU_BRKPT;
-
-    /* Preserves the for other uses such as
+    /* Preserves for other uses such as
      * single step etc.
      */
     cpu.last_opcode_bytes = bytes;
@@ -1292,28 +1345,6 @@ cpu_run_state_t cpu_run(void)
     cpu.cc = get_cc();
 
     return cpu.cpu_state;
-}
-
-/*------------------------------------------------
- * cpu_set_brkpt()
- *
- *  Set the global break point address variable.
- *  If CPU is started with cpu_run() it will run until
- *  reaching he address and exit with CPU_BRKPT status.
- *  A break point that is out of memory range also clears the current
- *  break point.
- *
- *  param:  Break point address, or '-1' to clear break-point.
- *  return: Break point address, or '-1' if cleared
- */
-int cpu_set_brkpt(int address)
-{
-    if ( address < 0 || address > (MEMORY-1) )
-        break_point_address = -1;
-    else
-        break_point_address = address;
-
-    return break_point_address;
 }
 
 /*------------------------------------------------

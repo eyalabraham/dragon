@@ -1,6 +1,6 @@
 #!/usr/bin/awk
 #
-# lst2k.awk
+# lst2h.awk
 #
 #   Convert as9 MC6809E assembler listing output to a header test file.
 #   Write an assembly language program, assemble with as9, and convert
