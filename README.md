@@ -1,14 +1,18 @@
 # Dragon 32 computer emulator
 
-This project implements the software and the hardware needed to emulate a [Dragon 32 computer](https://en.wikipedia.org/wiki/Dragon_32/64). The goal is to run the emulation on a bare-metal Raspberry Pi (RPi) platform, but development would be compiled to run under Linux. This was my first computer when home/personal computers started to emerge in the mid 80s, and it is also one of the simplest to emulate. Other emulators exist, [including XROR](http://www.6809.org.uk/xroar/), but I decided to build my own as an exercise in RPi bare-metal programming.
+This project implements the software and the hardware needed to emulate a [Dragon 32 computer](https://en.wikipedia.org/wiki/Dragon_32/64). The end goal is to run the emulation on a bare-metal Raspberry Pi (RPi) platform with some external peripherals. Development would be done on a Raspberry Pi Linux distribution. The Dragon was my first computer when home/personal computers started to emerge in the mid 80s, and it is also one of the simplest to emulate. Other emulators exist, [including XROR](http://www.6809.org.uk/xroar/), but I decided to build my own as an exercise in RPi bare-metal programming.
 
 ## Resources
 
 - [The DRAGON Archives](https://worldofdragon.org/index.php?title=Main_Page) resources and software.
 - [DRAGON Data archives](http://www.dragondata.co.uk/index.html) hardware schematics.
 - [Inside the Dragon](http://www.dragondata.co.uk/Publications/InsideTheDragon.pdf) by Duncan Smeed and Ian Sommerville.
+- Computers based on 6809 [CoCo Coding](https://sites.google.com/a/aaronwolfe.com/cococoding/home)
 
 ## Design
+
+The CPU module is ```cpu.c```, the memory module is ```mem.c```. The IO module is implemented as call-back functions hooked through the memory module to selected memory addresses, and emulate the response of a memory mapper IO device. The IO module call-backs implement the various IO device in the emulated computer. This design is flexible enough to allow the definition of any computer configuration, memory and IO, built around an MC6809 CPU. The examples and development steps show an [SWTPC computer](https://en.wikipedia.org/wiki/SWTPC) and [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html) as two instances I used along the way.  
+The emulation will not all be done through software. In order to save time some IO devices will be implemented in hardware: keyboard interface (possibly PS2 through an the Pi's SPI), audio DAC and an analog comparator for a successive approximation ADC that will reproduce sound and support an **original** (circa 1984) Dragon Computer joystick.  
 
 ASCII art depiction of the system for the RPi bare metal implementation:
 
@@ -24,7 +28,7 @@ ASCII art depiction of the system for the RPi bare metal implementation:
   +-----+  +----------+  |              |         |
                 |        |              |         |
            +----------+  |       |      |         |
-           | Graphics |  | SAM   | 6821 |         |
+           | Graphics |  | SAM   | PIA  |         |
            | xlate    |--| VGD   |      |         |
            +----------+  +-------+------+         |
                 |                    |          ------
@@ -44,11 +48,12 @@ ASCII art depiction of the system for the RPi bare metal implementation:
 
 ## Implementation
 
-This repository contains all the intermediate implementation steps, and tags them for easy retrieval. Each step builds on the functionality of its predecessors and maintains backward compatibility. The latest release is listed first:
+This repository contains all the intermediate implementation steps and tags them for easy retrieval. Each step builds on the functionality of its predecessors and maintains backward compatibility. The latest release is listed first:
 
-- (next up) Extended BASIC as used in the Tandy Coco 2 modified for the SBC with all I/O via serial on an emulation of [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html)
-- Tag 0.2 [SBUG-E 6809 Monitor](https://deramp.com/swtpc.com/MP_09/SBUG_Index.htm) program running in emulator.
-- [Tag 0.1](https://github.com/eyalabraham/dragon/releases/tag/v0.1) Stand alone emulation driver ```emu09.c``` with CPU assembly op-code tests for ```mem.c``` and ```cpu.c``` modules. Probably around 80% confidence in accuracy of CPU emulation code, will add tests and bug fixes in later releases.
+- (next up) Completed emulation of SWI/SW2/SWI3 software interrupts and IRQ/FIRQ/NMI hardware interrupts.
+- Release tag 0.3 Extended BASIC as used in the Tandy Coco 2 modified for the SBC with all I/O via serial on an emulation of [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html)
+- [Release tag 0.2](https://github.com/eyalabraham/dragon/releases/tag/v0.2) [SBUG-E 6809 Monitor](https://deramp.com/swtpc.com/MP_09/SBUG_Index.htm) program running in an emulated [SWTPC computer](https://en.wikipedia.org/wiki/SWTPC).
+- [Release tag 0.1](https://github.com/eyalabraham/dragon/releases/tag/v0.1) Stand alone emulation driver ```emu09.c``` with CPU assembly op-code tests for ```mem.c``` and ```cpu.c``` modules. Probably around 80% confidence in accuracy of CPU emulation code, will add tests and bug fixes in later releases.
 
 ### Stand alone CPU vs Dragon Computer emulation
 
@@ -81,32 +86,32 @@ The Dragon computer supported a maximum of 64K Bytes of memory. The memory map w
 #### Memory module data structures
 
 ```
-#define     MEM_FLAG_ROM                0x80000000  // Memory location is read-only
-#define     MEM_FLAG_IO                 0x40000000  // Memory location is a registered memory-mapped IO device
-#define     MEM_MASK_CALLBACK           0x00ff0000  // Index to list of 256 IO device handler callbacks
-#define     MEM_MASK_DATA               0x000000ff  // Mask data bits
-#define     MEM_MASK_FLAGS              (MEM_FLAG_ROM | MEM_FLAG_IO)
+typedef enum
+{
+    MEM_TYPE_RAM,
+    MEM_TYPE_ROM,
+    MEM_TYPE_IO,
+} memory_flag_t;
 
-/* b07..b00  8 least significant bits are memory location data
- * b23..b16  8 bits holding index to a list of 256 callbacks for memory-mapped IO device handlers  
- * b31..b24  8 most significant bit are flags
- */
-uint32_t    memory[0xffff];
+typedef struct
+{
+    uint8_t data_byte;
+    memory_flag_t memory_type;
+    io_handler_callback io_handler;
+} memory_t;
 ````
-
-#### Memory-mapped IO device handlers 
 
 When the CPU emulation module reads a memory location is uses the ```mem_read()``` call that returns the contents of the memory address passed with the call. For a memory write using ```mem_write()``` call the following logic is applied:
 
 1. Check if address is in range 0x0000 to 0xffff. If not flag exception and return with no action
-2. Check memory location against MEM_FLAG_ROM flag. If memory location is ROM flag exception and return with no action
+2. Check memory location against MEM_FLAG_ROM flag. If memory location is ROM return with no action
 3. Write data to memory location.
-4. Check memory location against MEM_FLAG_IO flag. If flag is set, extract index of callback with MEM_MASK_CALLBACK and call the callback.
-5. Return.
+
+For both ```mem_read()``` and ```mem_write()``` check memory location against MEM_FLAG_IO flag. If flag is set, invoke the callback with the accessed address, the data (if a write operation) and a read/write flag. This will give the IO callback the context it needs to emulate the IO behind the memory address.
 
 ### IO emulation
 
-The MC6809E CPU in the Dragon computer uses memory mapped IO devices. During initialization the emulation registers device call-back functions that implement the IO devices' functionality. The call-backs are registered against memory address ranges associated with the device using the ```mem_define_io()``` call. When writes are issued to memory locations registered to IO devices, the call backs are called after the write operation.
+The MC6809E CPU in the Dragon computer uses memory mapped IO devices. During initialization the emulation registers device callback functions that implement the IO devices' functionality. The callbacks are registered against memory address ranges associated with the device using the ```mem_define_io()``` call. When reads or writes are issued to memory locations registered to IO devices, the callbacks are invoked. The ```mon09.c``` and ```basic09.c``` use IO callbacks to emulate the MC6850 ACIA serial interface chip.
 
 #### SN74LS783/MC6883 Synchronous Address Multiplexer (SAM)
 
@@ -135,11 +140,5 @@ tbd
 - Serial console for monitoring execution state
 - Settable logging to serial console
 - Built in exception generation, through which, modules can log exceptions. For example: writing to a memory location that is defines as ROM.
-
-## TODO
-- Evaluate exit code from mem_* functions
-- Complete CPU assembly op-code funcitonality test
-- Implement Monitor application in emulator
-- Implement BASIC SBC applciaiton in emulator
-- BASIC and/or MONITOR in bare-metal RPi
 - 
+

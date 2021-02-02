@@ -46,7 +46,7 @@ int uart_init(void)
     uart_fd = open(UART_UART0, O_RDWR | O_NOCTTY | O_NDELAY);
     if ( uart_fd == -1 )
     {
-        printf("%s: error %d opening %s\n", __FUNCTION__, errno, UART_UART0);
+        printf("%s: Error %d opening %s\n", __FUNCTION__, errno, UART_UART0);
         return -1;
     }
     else
@@ -56,7 +56,7 @@ int uart_init(void)
         uart_set_blocking(uart_fd, 0);
         fcntl(uart_fd, F_SETFL, FNDELAY);
 
-        printf("initialized UART0 %s\n", UART_UART0);
+        printf("Initialized UART0 %s\n", UART_UART0);
     }
 
     return 0;
@@ -99,7 +99,7 @@ int uart_recv(void)
     // exit on IO error
     else if ( read_result == -1 && errno != EAGAIN )
     {
-        printf("%s: error %d reading UART\n", __FUNCTION__, errno);
+        printf("%s: Error %d reading UART\n", __FUNCTION__, errno);
         return -1;
     }
 
@@ -151,7 +151,7 @@ int uart_set_interface_attr(int fd, int speed)
     memset (&tty, 0, sizeof tty);
     if (tcgetattr(fd, &tty) != 0)
     {
-        printf("%s: error %d from tcgetattr", __FUNCTION__, errno);
+        printf("%s: Error %d from tcgetattr", __FUNCTION__, errno);
         return -1;
     }
 
@@ -173,7 +173,7 @@ int uart_set_interface_attr(int fd, int speed)
 
     if (tcsetattr (fd, TCSANOW, &tty) != 0)
     {
-        printf("%s: error %d from tcsetattr()", __FUNCTION__, errno);
+        printf("%s: Error %d from tcsetattr()", __FUNCTION__, errno);
         return -1;
     }
 
@@ -200,7 +200,7 @@ int uart_set_blocking(int fd, int should_block)
     memset (&tty, 0, sizeof tty);
     if (tcgetattr (fd, &tty) != 0)
     {
-        printf("%s: error %d from tggetattr()", __FUNCTION__, errno);
+        printf("%s: Error %d from tggetattr()", __FUNCTION__, errno);
         return -1;
     }
 
@@ -209,7 +209,7 @@ int uart_set_blocking(int fd, int should_block)
 
     if (tcsetattr (fd, TCSANOW, &tty) != 0)
     {
-        printf("%s: error %d setting term attributes", __FUNCTION__, errno);
+        printf("%s: Error %d setting term attributes", __FUNCTION__, errno);
         return -1;
     }
 

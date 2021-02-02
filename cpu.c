@@ -795,7 +795,7 @@ cpu_run_state_t cpu_run(void)
                     break;
 
                 case 0x53:
-                    cpu.b = com(cpu.a);
+                    cpu.b = com(cpu.b);
                     break;
 
                 /* CWAI
@@ -1523,12 +1523,12 @@ static uint8_t asl(uint8_t byte)
 {
     uint16_t result;
 
-    result = (uint16_t) byte << 1;
+    result = ((uint16_t) byte) << 1;
 
     eval_cc_c(result);
     eval_cc_z(result);
     eval_cc_n(result);
-    eval_cc_v(0, byte, result);
+    eval_cc_v(byte, byte, result);
 
     return (uint8_t) result;
 }
@@ -1607,7 +1607,7 @@ static void cmp(uint8_t arg, uint8_t byte)
     eval_cc_c(result);
     eval_cc_z(result);
     eval_cc_n(result);
-    eval_cc_v(arg, byte, result);
+    eval_cc_v(arg, ~byte, result);
 }
 
 /*------------------------------------------------
@@ -1626,7 +1626,7 @@ static void cmp16(uint16_t arg, uint16_t word)
 
     eval_cc_c16(result);
     eval_cc_z16(result);
-    eval_cc_v16(arg, word, result);
+    eval_cc_v16(arg, ~word, result);
     eval_cc_n16(result);
 }
 
@@ -1743,7 +1743,7 @@ static uint8_t dec(uint8_t byte)
 
     result = byte - 1;
 
-    eval_cc_v(0, byte, result);
+    eval_cc_v(byte, 0xfe, result);
     eval_cc_z(result);
     eval_cc_n(result);
 
@@ -1809,7 +1809,7 @@ static uint8_t inc(uint8_t byte)
 
     result = byte + 1;
 
-    eval_cc_v(0, byte, result);
+    eval_cc_v(byte, 1, result);
     eval_cc_z(result);
     eval_cc_n(result);
 
@@ -1840,19 +1840,19 @@ static uint8_t lsr(uint8_t byte)
  * neg()
  *
  *  Negate byte.
+ *  Two's complement: ~byte+1
  *
- *  ~byte+1
  */
 static uint8_t neg(uint8_t byte)
 {
     uint16_t result;
 
-    result = (~byte + 1);
+    result =  0 - byte;
 
     eval_cc_c(result);
     eval_cc_z(result);
     eval_cc_n(result);
-    eval_cc_v(0, byte, result);
+    eval_cc_v(0, ~byte, result);
 
     return (uint8_t) result;
 }
@@ -2225,7 +2225,7 @@ static uint8_t rol(uint8_t byte)
         result &= 0xfffe;
 
     eval_cc_c(result);
-    eval_cc_v(0, byte, result);
+    eval_cc_v(byte, byte, result);
     eval_cc_z(result);
     eval_cc_n(result);
 
@@ -2333,7 +2333,7 @@ static uint8_t sbc(uint8_t acc, uint8_t byte)
     eval_cc_c(result);
     eval_cc_z(result);
     eval_cc_n(result);
-    eval_cc_v(acc, byte, result);
+    eval_cc_v(acc, ~byte, result);
 
     return (uint8_t) result;
 }
@@ -2371,7 +2371,7 @@ static uint8_t sub(uint8_t acc, uint8_t byte)
     eval_cc_c(result);
     eval_cc_z(result);
     eval_cc_n(result);
-    eval_cc_v(acc, byte, result);
+    eval_cc_v(acc, ~byte, result);
 
     return (uint8_t) result;
 }
@@ -2389,14 +2389,14 @@ static void subd(uint16_t word)
     uint32_t result;
 
     acc = (cpu.a << 8) + cpu.b;
-    result = acc + word;
+    result = acc - word;
 
     cpu.a = result >> 8;
     cpu.b = result & 0xff;
 
     eval_cc_c16(result);
     eval_cc_z16(result);
-    eval_cc_v16(acc, word, result);
+    eval_cc_v16(acc, ~word, result);
     eval_cc_n16(result);
 }
 
@@ -3042,7 +3042,7 @@ static void eval_cc_z16(uint32_t value)
  */
 static void eval_cc_n(uint16_t value)
 {
-    cc.n = (value & 0x80) ? CC_FLAG_SET : CC_FLAG_CLR;
+    cc.n = (value & 0x0080) ? CC_FLAG_SET : CC_FLAG_CLR;
 }
 
 /*------------------------------------------------
@@ -3065,29 +3065,31 @@ static void eval_cc_n16(uint32_t value)
  *  Use the C(in) != C(out) method, note the C(out) shift to align the bit location
  *  for a bit-wise XOR.
  *  source: http://teaching.idallen.com/dat2343/10f/notes/040_overflow.txt
+ *  Ken Shirriff: https://www.righto.com/2012/12/
  *
  *  param:  Input operands and result
  *  return: Nothing
  */
 static void eval_cc_v(uint8_t val1, uint8_t val2, uint16_t result)
 {
-    cc.v = ((((val1 ^ val2) ^ result) & 0x80) ^ ((result & 0x0100) >> 1)) ? CC_FLAG_SET : CC_FLAG_CLR;
+    cc.v = ((val1 ^ result) & (val2 ^ result) & 0x0080) ? CC_FLAG_SET : CC_FLAG_CLR;
 }
 
 /*------------------------------------------------
- * eval_cc_v()
+ * eval_cc_v16()
  *
  *  Evaluate overflow bit value of input and set/clear CC.V flag.
  *  Use the C(in) != C(out) method, note the C(out) shift to align the bit location
  *  for a bit-wise XOR.
  *  source: http://teaching.idallen.com/dat2343/10f/notes/040_overflow.txt
+ *  Ken Shirriff: https://www.righto.com/2012/12/
  *
  *  param:  Input operands and result
  *  return: Nothing
  */
 static void eval_cc_v16(uint16_t val1, uint16_t val2, uint32_t result)
 {
-    cc.v = ((((val1 ^ val2) ^ result) & 0x8000) ^ ((result & 0x0010000) >> 1)) ? CC_FLAG_SET : CC_FLAG_CLR;
+    cc.v = ((val1 ^ result) & (val2 ^ result) & 0x00008000) ? CC_FLAG_SET : CC_FLAG_CLR;
 }
 
 /*------------------------------------------------

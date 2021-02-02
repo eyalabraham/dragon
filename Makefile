@@ -29,9 +29,10 @@ OPT = -Wall -L/usr/local/lib -I $(INCDIR)
 #------------------------------------------------------------------------------------
 # dependencies
 #------------------------------------------------------------------------------------
-DEPS = config.h mem.h cpu.h mc6809e.h
+DEPS = config.h mem.h cpu.h mc6809e.h trace.h uart.h
 OBJSEMU09 = emu09.o mem.o cpu.o rpi.o
 OBJSMON09 = mon09.o mem.o cpu.o rpi.o uart.o
+OBJSBAS09 = basic09.o mem.o cpu.o trace.o rpi.o uart.o
 OBJSDRAGON = dragon.o mem.o cpu.o rpi.o
 
 _DEPS = $(patsubst %,$(INCDIR)/%,$(DEPS))
@@ -50,6 +51,9 @@ emu09: $(OBJSEMU09)
 mon09: $(OBJSMON09)
 	$(CC) $^ $(OPT) -o $@
 
+basic09: $(OBJSBAS09)
+	$(CC) $^ $(OPT) -o $@
+
 dragon: $(OBJSDRAGON)
 	$(CC) $^ $(OPT) -o $@
 
@@ -62,6 +66,7 @@ sync:
 #	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make dragon"
 	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make emu09"
 	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make mon09"
+	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make basic09"
 
 rclean:
 	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make clean"
@@ -75,6 +80,7 @@ clean:
 	rm -f dragon
 	rm -f emu09
 	rm -f mon09
+	rm -f basic09
 	rm -f *.o
 	rm -f *.bak
 
