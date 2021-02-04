@@ -181,7 +181,7 @@ int cpu_init(int address)
     /* CPU state
      */
     cpu.nmi_armed = 0;
-    cpu.nmi_asserted = 0;
+    cpu.nmi_latched = 0;
     cpu.halt_asserted = 0;
     cpu.reset_asserted = 0;
     cpu.irq_asserted = 0;
@@ -228,14 +228,14 @@ void cpu_reset(int state)
 /*------------------------------------------------
  * cpu_nmi()
  *
- *  Assert Non Mask-able Interrupt (NMI) state
+ *  Trigger a Non Mask-able Interrupt (NMI) state
  *
  *  param:  0- clear, 1- asserted
  *  return: Nothing
  */
-void cpu_nmi(int state)
+void cpu_nmi_trigger(void)
 {
-    cpu.nmi_asserted = state;
+    cpu.nmi_latched = 1;
 }
 
 /*------------------------------------------------
@@ -295,6 +295,7 @@ cpu_run_state_t cpu_run(void)
         cc.i = CC_FLAG_SET;
         cpu.dp = 0;
         cpu.nmi_armed = 0;
+        cpu.nmi_latched = 0;
         bytes = 0;
         cycles = 0;
         cpu.cpu_state = CPU_RESET;
@@ -327,8 +328,16 @@ cpu_run_state_t cpu_run(void)
          * setting the PC to the vectors content.
          * Release CPU state to CPU_EXEC to let COU emulation
          * start fetching and executing instructions.
+         *
+         * NMI signal is latched at any time and services here.
+         * The NMI signal is transition driven.
+         * The NMI latch/logic is cleared when it is acknowledged.
+         * FIRQ and IRQ will be samples at each op-code cycle,
+         * but if the IRQ/FIRQ signal was removed before sapling
+         * then it will not be serviced.
+         * The IRQ and FIRQ signal is level driven.
          */
-        intr_latch |= cpu.nmi_asserted ? INT_NMI : 0;
+        intr_latch |= cpu.nmi_latched ? INT_NMI : 0;
         intr_latch |= cpu.irq_asserted ? INT_IRQ : 0;
         intr_latch |= cpu.firq_asserted ? INT_FIRQ : 0;
 
@@ -336,34 +345,89 @@ cpu_run_state_t cpu_run(void)
         {
             cpu.cpu_state = CPU_EXEC;
             cc.e = CC_FLAG_SET;
-            /* 1. Stack PC, U, Y, X, DP, B, A, CC
-               2. Check for SW2 or 3
-               3. cc |= (CC_F_FIRQ | CC_I_IRQ);
-               4. pc to NMI vector
-               5. Adjust cycle time for interrupt response
-             */
+
+            cpu.s--;
+            mem_write(cpu.s, cpu.pc & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, (cpu.pc >> 8) & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, cpu.u & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, (cpu.u >> 8) & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, cpu.y & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, (cpu.y >> 8) & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, cpu.x & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, (cpu.x >> 8) & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, cpu.dp);
+            cpu.s--;
+            mem_write(cpu.s, cpu.b);
+            cpu.s--;
+            mem_write(cpu.s, cpu.a);
+            cpu.s--;
+            mem_write(cpu.s, get_cc());
+
+            cpu.nmi_latched = 0;
+
+            cc.f = CC_FLAG_SET;
+            cc.i = CC_FLAG_SET;
+
+            cpu.pc = (mem_read(VEC_NMI) << 8) + mem_read(VEC_NMI+1);
         }
         else if ( !(cc.f) && (intr_latch & INT_FIRQ) )
         {
             cpu.cpu_state = CPU_EXEC;
             cc.e = CC_FLAG_CLR;
-            /* 1. Stack PC, CC
-               2. Check for SW2 or 3
-               3. cc |= (CC_F_FIRQ | CC_I_IRQ);
-               4. pc to FIRQ vector
-               5. Adjust cycle time for interrupt response
-             */
+
+            cpu.s--;
+            mem_write(cpu.s, cpu.pc & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, (cpu.pc >> 8) & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, get_cc());
+
+            cc.f = CC_FLAG_SET;
+            cc.i = CC_FLAG_SET;
+
+            cpu.pc = (mem_read(VEC_FIRQ) << 8) + mem_read(VEC_FIRQ+1);
         }
         else if ( !(cc.i) && (intr_latch & INT_IRQ) )
         {
             cpu.cpu_state = CPU_EXEC;
             cc.e = CC_FLAG_SET;
-            /* 1. Stack PC, U, Y, X, DP, B, A, CC
-               2. Check for SW2 or 3
-               3. cc |= CC_I_IRQ;
-               4. pc to IRQ vector
-               5. Adjust cycle time for interrupt response
-             */
+
+            cpu.s--;
+            mem_write(cpu.s, cpu.pc & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, (cpu.pc >> 8) & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, cpu.u & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, (cpu.u >> 8) & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, cpu.y & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, (cpu.y >> 8) & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, cpu.x & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, (cpu.x >> 8) & 0xff);
+            cpu.s--;
+            mem_write(cpu.s, cpu.dp);
+            cpu.s--;
+            mem_write(cpu.s, cpu.b);
+            cpu.s--;
+            mem_write(cpu.s, cpu.a);
+            cpu.s--;
+            mem_write(cpu.s, get_cc());
+
+            cc.i = CC_FLAG_SET;
+
+            cpu.pc = (mem_read(VEC_IRQ) << 8) + mem_read(VEC_IRQ+1);
         }
 
         /* We get here if not in RESET and not HALTed.
@@ -447,6 +511,7 @@ cpu_run_state_t cpu_run(void)
                     eval_cc_z16(cpu.s);
                     eval_cc_n16(cpu.s);
                     cc.v = CC_FLAG_CLR;
+                    cpu.nmi_armed = 1;
                     break;
 
                 /* LDY
@@ -974,6 +1039,7 @@ cpu_run_state_t cpu_run(void)
 
                 case 0x32:
                     cpu.s = eff_addr;
+                    cpu.nmi_armed = 1;
                     break;
 
                 case 0x33:
@@ -2951,6 +3017,7 @@ static void write_register(int reg, uint16_t data)
 
         case 4:
             cpu.s = data;
+            cpu.nmi_armed = 1;
             break;
 
         case 5:

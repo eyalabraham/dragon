@@ -12,7 +12,8 @@ This project implements the software and the hardware needed to emulate a [Drago
 ## Design
 
 The CPU module is ```cpu.c```, the memory module is ```mem.c```. The IO module is implemented as call-back functions hooked through the memory module to selected memory addresses, and emulate the response of a memory mapper IO device. The IO module call-backs implement the various IO device in the emulated computer. This design is flexible enough to allow the definition of any computer configuration, memory and IO, built around an MC6809 CPU. The examples and development steps show an [SWTPC computer](https://en.wikipedia.org/wiki/SWTPC) and [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html) as two instances I used along the way.  
-The emulation will not all be done through software. In order to save time some IO devices will be implemented in hardware: keyboard interface (possibly PS2 through an the Pi's SPI), audio DAC and an analog comparator for a successive approximation ADC that will reproduce sound and support an **original** (circa 1984) Dragon Computer joystick.  
+  
+The emulation will not all be done through software. In order to save time some IO devices will be implemented in hardware: keyboard interface (possibly PS2 through the Pi's SPI), audio DAC and an analog comparator for a successive approximation ADC that will reproduce sound and support an **original** (circa 1984) Dragon Computer joystick.  
 
 ASCII art depiction of the system for the RPi bare metal implementation:
 
@@ -50,8 +51,9 @@ ASCII art depiction of the system for the RPi bare metal implementation:
 
 This repository contains all the intermediate implementation steps and tags them for easy retrieval. Each step builds on the functionality of its predecessors and maintains backward compatibility. The latest release is listed first:
 
-- (next up) Completed emulation of SWI/SW2/SWI3 software interrupts and IRQ/FIRQ/NMI hardware interrupts.
-- Release tag 0.3 Extended BASIC as used in the Tandy Coco 2 modified for the SBC with all I/O via serial on an emulation of [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html)
+- (next up) Timing profiles of emulation running under Linux Raspberry Pi 
+- Release tag 0.4 Completed emulation and testing of SWI/SW2/SWI3 software interrupts and IRQ/FIRQ/NMI hardware interrupts.
+- [Release tag 0.3](https://github.com/eyalabraham/dragon/releases/tag/v0.3) Extended BASIC as used in the Tandy Coco 2 modified for the SBC with all I/O via serial on an emulation of [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html)
 - [Release tag 0.2](https://github.com/eyalabraham/dragon/releases/tag/v0.2) [SBUG-E 6809 Monitor](https://deramp.com/swtpc.com/MP_09/SBUG_Index.htm) program running in an emulated [SWTPC computer](https://en.wikipedia.org/wiki/SWTPC).
 - [Release tag 0.1](https://github.com/eyalabraham/dragon/releases/tag/v0.1) Stand alone emulation driver ```emu09.c``` with CPU assembly op-code tests for ```mem.c``` and ```cpu.c``` modules. Probably around 80% confidence in accuracy of CPU emulation code, will add tests and bug fixes in later releases.
 
@@ -140,5 +142,4 @@ tbd
 - Serial console for monitoring execution state
 - Settable logging to serial console
 - Built in exception generation, through which, modules can log exceptions. For example: writing to a memory location that is defines as ROM.
-- 
 

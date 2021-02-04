@@ -21,27 +21,27 @@ The emulated computer traps and services read and write access to this device. T
   
 **MC6850 Control Register (Write) $E004**
 
- 0-1  Baudrate (0=CLK/64, 1=CLK/16, 2=CLK/1, 3=RESET)
- 2-4  Mode (0..7 = 7e2,7o2,7e1,7o1,8n2,8n1,8e1,8o1) (data/stop bits, parity)
- 5-6  Transmit Interrupt/RTS/Break control (0..3)
-       0 = Output /RTS=low,  and disable Tx Interrupt
-       1 = Output /RTS=low,  and enable Tx Interrupt
-       2 = Output /RTS=high, and disable Tx Interrupt
-       3 = Output /RTS=low,  and disable Tx Interrupt, and send a Break
- 7    Receive Interrupt (1=Enable on buffer full/buffer overrun)
+ 0-1  Baudrate (0=CLK/64, 1=CLK/16, 2=CLK/1, 3=RESET)  
+ 2-4  Mode (0..7 = 7e2,7o2,7e1,7o1,8n2,8n1,8e1,8o1) (data/stop bits, parity)  
+ 5-6  Transmit Interrupt/RTS/Break control (0..3)  
+       0 = Output /RTS=low,  and disable Tx Interrupt  
+       1 = Output /RTS=low,  and enable Tx Interrupt  
+       2 = Output /RTS=high, and disable Tx Interrupt  
+       3 = Output /RTS=low,  and disable Tx Interrupt, and send a Break  
+ 7    Receive Interrupt (1=Enable on buffer full/buffer overrun)  
 
 **MC6850 Status Register (Read) $E004**
 
- 0    Receive Data  (0=No data, 1=Data can be read)
- 1    Transmit Data (0=Busy, 1=Ready/Empty, Data can be written)
- 2    /DCD level
- 3    /CTS level
- 4    Receive Framing Error (1=Error)
- 5    Receive Overrun Error (1=Error)
- 6    Receive Parity Error  (1=Error)
- 7    Interrupt Flag (see Control Bits 5-7) (IRQ pin is not connected)
+ 0    Receive Data  (0=No data, 1=Data can be read)  
+ 1    Transmit Data (0=Busy, 1=Ready/Empty, Data can be written)  
+ 2    /DCD level  
+ 3    /CTS level  
+ 4    Receive Framing Error (1=Error)  
+ 5    Receive Overrun Error (1=Error)  
+ 6    Receive Parity Error  (1=Error)  
+ 7    Interrupt Flag (see Control Bits 5-7) (IRQ pin is not connected)  
 
-MC6850 Data Register (R/W) Data can be read when Status.Bit0=1, and written when Status.Bit1=1.
+MC6850 Data Register (R/W) Data can be read when Status.Bit0=1, and written when Status.Bit1=1.  
 
 **8-bit Data (Read/Write) $E005**
 

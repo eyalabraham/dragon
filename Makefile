@@ -30,10 +30,11 @@ OPT = -Wall -L/usr/local/lib -I $(INCDIR)
 # dependencies
 #------------------------------------------------------------------------------------
 DEPS = config.h mem.h cpu.h mc6809e.h trace.h uart.h
-OBJSEMU09 = emu09.o mem.o cpu.o rpi.o
-OBJSMON09 = mon09.o mem.o cpu.o rpi.o uart.o
-OBJSBAS09 = basic09.o mem.o cpu.o trace.o rpi.o uart.o
-OBJSDRAGON = dragon.o mem.o cpu.o rpi.o
+OBJEMU09 = emu09.o mem.o cpu.o rpi.o
+OBJMON09 = mon09.o mem.o cpu.o rpi.o uart.o
+OBJBAS09 = basic09.o mem.o cpu.o trace.o rpi.o uart.o
+OBJINT09 = intr09.o mem.o cpu.o trace.o rpi.o uart.o
+OBJDRAGON = dragon.o mem.o cpu.o rpi.o
 
 _DEPS = $(patsubst %,$(INCDIR)/%,$(DEPS))
 
@@ -45,16 +46,19 @@ _DEPS = $(patsubst %,$(INCDIR)/%,$(DEPS))
 
 all: dragon
 
-emu09: $(OBJSEMU09)
+emu09: $(OBJEMU09)
 	$(CC) $^ $(OPT) -o $@
 
-mon09: $(OBJSMON09)
+mon09: $(OBJMON09)
 	$(CC) $^ $(OPT) -o $@
 
-basic09: $(OBJSBAS09)
+basic09: $(OBJBAS09)
 	$(CC) $^ $(OPT) -o $@
 
-dragon: $(OBJSDRAGON)
+intr09: $(OBJINT09)
+	$(CC) $^ $(OPT) -o $@
+
+dragon: $(OBJDRAGON)
 	$(CC) $^ $(OPT) -o $@
 
 #------------------------------------------------------------------------------------
@@ -67,6 +71,7 @@ sync:
 	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make emu09"
 	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make mon09"
 	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make basic09"
+	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make intr09"
 
 rclean:
 	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make clean"
@@ -81,6 +86,7 @@ clean:
 	rm -f emu09
 	rm -f mon09
 	rm -f basic09
+	rm -f intr09
 	rm -f *.o
 	rm -f *.bak
 

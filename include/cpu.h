@@ -53,7 +53,7 @@ typedef struct
      */
     int     int_latch;
     int     nmi_armed;
-    int     nmi_asserted;
+    int     nmi_latched;
     int     halt_asserted;
     int     reset_asserted;
     int     irq_asserted;
@@ -67,7 +67,7 @@ int  cpu_init(int address);
 
 void cpu_halt(int state);
 void cpu_reset(int state);
-void cpu_nmi(int state);
+void cpu_nmi_trigger(void);
 void cpu_firq(int state);
 void cpu_irq(int state);
 
