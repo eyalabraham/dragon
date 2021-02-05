@@ -51,8 +51,9 @@ ASCII art depiction of the system for the RPi bare metal implementation:
 
 This repository contains all the intermediate implementation steps and tags them for easy retrieval. Each step builds on the functionality of its predecessors and maintains backward compatibility. The latest release is listed first:
 
-- (next up) Timing profiles of emulation running under Linux Raspberry Pi 
-- Release tag 0.4 Completed emulation and testing of SWI/SW2/SWI3 software interrupts and IRQ/FIRQ/NMI hardware interrupts.
+- (next up) Minimal Dragon 32 computer implementation.
+- Release tag 0.5 Timing profiles of emulation running under Linux Raspberry Pi 
+- [Release tag 0.4](https://github.com/eyalabraham/dragon/releases/tag/v0.4) Completed emulation and testing of SWI/SW2/SWI3 software interrupts and IRQ/FIRQ/NMI hardware interrupts.
 - [Release tag 0.3](https://github.com/eyalabraham/dragon/releases/tag/v0.3) Extended BASIC as used in the Tandy Coco 2 modified for the SBC with all I/O via serial on an emulation of [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html)
 - [Release tag 0.2](https://github.com/eyalabraham/dragon/releases/tag/v0.2) [SBUG-E 6809 Monitor](https://deramp.com/swtpc.com/MP_09/SBUG_Index.htm) program running in an emulated [SWTPC computer](https://en.wikipedia.org/wiki/SWTPC).
 - [Release tag 0.1](https://github.com/eyalabraham/dragon/releases/tag/v0.1) Stand alone emulation driver ```emu09.c``` with CPU assembly op-code tests for ```mem.c``` and ```cpu.c``` modules. Probably around 80% confidence in accuracy of CPU emulation code, will add tests and bug fixes in later releases.
@@ -64,6 +65,23 @@ The ```mem.c``` and ```cpu.c``` modules are all that are required for a basic MC
 The method of repeatedly calling ```cpu_run()``` allow interruption for single stepping, break-point detection, and insertion of external events such as CPU interrupts.
 
 To implement the full Dragon computer emulation, the ```cpu_run()``` function is called from an endless loop and IO device call-backs are implemented to carry out IO device activities.
+
+### Timing profile
+
+One of the goals is to achieve CPU cycle timing that is as close as possible to the 0.89MHz of MC6809E that was used in the Dragon Computer. A crude timing profile using ```profile.asm``` test code and ```profile.c``` emulation module yielded the following results under Raspberrypi Linux
+
+| Measurement       | Setup                    |Total [uSec] | Command [uSec] | Cycles | Cycle time [uSec] |
+|:------------------|:-------------------------|:-----------:|:--------------:|:------:|:-----------------:|
+| Baseline          | Empty loop overhead      | 2.8         |                |        |                   | 
+| NOP op-code       | 10x NOP op-codes         | 10          | 0.72           | 2      | 0.36              |
+| ORA <immed>       | 10x ORA <Immed>          | 9.6         | 0.68           | 2      | 0.34              |
+| ABX op-code       | 10x ABX op-codes         | 9.8         | 0.7            | 3      | 0.23              |
+| STA <addr_ext>    | 10x STA <add_ext>        | 14.8        | 1.2            | 5      | 0.24              |
+| LBRA <long>       | 10x LBRA <long>          | 12.8        | 1.0            | 5      | 0.20              |
+| PSHS/PULS a,b,x,y | 5x PSHS / 5xPULS a,b,x,y | 27.5        | 2.47           | 11     | 0.22              |
+
+The tests were run on a Raspberry Pi model B, single core (ARM1176JZF-S) 700MHz Broadcom BCM2835 with 512MB RAM, running a generic Raspberrypi Linux distribution.  
+The calculations show that the emulated CPU runs at an average rate of 3,754,978[MHz]
 
 ### MC6809E CPU module
 
