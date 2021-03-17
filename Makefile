@@ -35,7 +35,8 @@ OBJMON09 = mon09.o mem.o cpu.o rpi.o uart.o
 OBJBAS09 = basic09.o mem.o cpu.o trace.o rpi.o uart.o
 OBJINT09 = intr09.o mem.o cpu.o trace.o rpi.o uart.o
 OBJPROF = profile.o mem.o cpu.o rpi.o
-OBJDRAGON = dragon.o mem.o cpu.o rpi.o
+OBJSPI = spi.o
+OBJDRAGON = dragon.o mem.o cpu.o rpi.o sam.o pia.o vdg.o trace.o uart.o
 
 _DEPS = $(patsubst %,$(INCDIR)/%,$(DEPS))
 
@@ -45,7 +46,7 @@ _DEPS = $(patsubst %,$(INCDIR)/%,$(DEPS))
 %.o: %.c $(_DEPS)
 	$(CC) -c -o $@ $< $(OPT)
 
-all: dragon
+all: sync
 
 emu09: $(OBJEMU09)
 	$(CC) $^ $(OPT) -o $@
@@ -62,8 +63,11 @@ intr09: $(OBJINT09)
 profile: $(OBJPROF)
 	$(CC) $^ -L/usr/local/lib -lbcm2835 $(OPT) -o $@
 
+spi: $(OBJSPI)
+	$(CC) $^ -L/usr/local/lib -lbcm2835 $(OPT) -o $@
+
 dragon: $(OBJDRAGON)
-	$(CC) $^ $(OPT) -o $@
+	$(CC) $^ -L/usr/local/lib -lbcm2835 $(OPT) -o $@
 
 #------------------------------------------------------------------------------------
 # rsync files and run remote 'make'
@@ -71,12 +75,17 @@ dragon: $(OBJDRAGON)
 #------------------------------------------------------------------------------------
 sync:
 	rsync -vrh $(SRCDIR)/*  pi@10.0.0.13:/home/pi/Documents/dragon
-#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make dragon"
-	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make emu09"
-	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make mon09"
-	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make basic09"
-	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make intr09"
-	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make profile"
+#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make spi"
+	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make dragon"
+#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make emu09"
+#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make mon09"
+#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make basic09"
+#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make intr09"
+#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make profile"
+
+avr:
+	rsync -vrh ~/data/projects/dragon/code/ps2spi/Release/ps2spi.hex pi@10.0.0.13:/home/pi/Documents/dragon
+	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && sudo avrdude -pt85 -clinuxgpio -C+avrdude.rpi.conf -Uflash:w:ps2spi.hex"
 
 rclean:
 	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make clean"

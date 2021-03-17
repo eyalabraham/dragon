@@ -51,8 +51,9 @@ ASCII art depiction of the system for the RPi bare metal implementation:
 
 This repository contains all the intermediate implementation steps and tags them for easy retrieval. Each step builds on the functionality of its predecessors and maintains backward compatibility. The latest release is listed first:
 
-- (next up) Minimal Dragon 32 computer implementation.
-- Release tag 0.5 Timing profiles of emulation running under Linux Raspberry Pi 
+- (next up) Dragon 32 computer emulation with video and semi-graphics modes.
+- Release tag 0.6 Minimal Dragon 32 computer emulation with text mode and keyboard.
+- [Release tag 0.5](https://github.com/eyalabraham/dragon/releases/tag/v0.5) Timing profiles of CPU emulation running under Linux on Raspberry Pi 
 - [Release tag 0.4](https://github.com/eyalabraham/dragon/releases/tag/v0.4) Completed emulation and testing of SWI/SW2/SWI3 software interrupts and IRQ/FIRQ/NMI hardware interrupts.
 - [Release tag 0.3](https://github.com/eyalabraham/dragon/releases/tag/v0.3) Extended BASIC as used in the Tandy Coco 2 modified for the SBC with all I/O via serial on an emulation of [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html)
 - [Release tag 0.2](https://github.com/eyalabraham/dragon/releases/tag/v0.2) [SBUG-E 6809 Monitor](https://deramp.com/swtpc.com/MP_09/SBUG_Index.htm) program running in an emulated [SWTPC computer](https://en.wikipedia.org/wiki/SWTPC).
@@ -81,7 +82,7 @@ One of the goals is to achieve CPU cycle timing that is as close as possible to 
 | PSHS/PULS a,b,x,y | 5x PSHS / 5xPULS a,b,x,y | 27.5        | 2.47           | 11     | 0.22              |
 
 The tests were run on a Raspberry Pi model B, single core (ARM1176JZF-S) 700MHz Broadcom BCM2835 with 512MB RAM, running a generic Raspberrypi Linux distribution.  
-The calculations show that the emulated CPU runs at an average rate of 3,754,978[MHz]
+The calculations show that the emulated CPU runs at an average rate of 3,754,978[Hz]
 
 ### MC6809E CPU module
 
@@ -119,7 +120,7 @@ typedef struct
     memory_flag_t memory_type;
     io_handler_callback io_handler;
 } memory_t;
-````
+```
 
 When the CPU emulation module reads a memory location is uses the ```mem_read()``` call that returns the contents of the memory address passed with the call. For a memory write using ```mem_write()``` call the following logic is applied:
 
@@ -135,11 +136,11 @@ The MC6809E CPU in the Dragon computer uses memory mapped IO devices. During ini
 
 #### SN74LS783/MC6883 Synchronous Address Multiplexer (SAM)
 
-tbd
+The [SAM chip](https://cdn.hackaday.io/files/1685367210644224/datasheet-MC6883_SAM.pdf) in the Dragon computer is responsible for IO address decoding, dynamic RAM memory refresh, and video memory address generation for the Video Display Generator (VDG) chip. Of these three functions, only the last one requires implementation. Since the SAM chip does not generate video, the address scanning is implemented in the VDG module by the ```vdg_render()``` function. The SAM device emulation only transfers offset address and video mode settings to the VDG module.
 
 #### MC6847 Video Display Generator (VDG)
 
-The VDG is Motorola's [MC6847](https://en.wikipedia.org/wiki/Motorola_6847) video chip. Since the VDG's video memory is part of the 64K Bytes of the CPU's memory map, then writes to that region are reflected into the RPi's video frame buffer by the IO handler of the VDG. The handler will adapt the writes to the RPi frame buffer based on the VDG/SAM modes for text or graphics.
+The VDG is Motorola's [MC6847](https://en.wikipedia.org/wiki/Motorola_6847) video chip. Since the VDG's video memory is part of the 64K Bytes of the CPU's memory map, then writes to that region are reflected into the RPi's video frame buffer by the IO handler of the VDG. The handler will adapt the writes to the RPi frame buffer based on the VDG/SAM modes for text or graphics. The Dragon computer video display emulation is implemented in the VDG module by the ```vdg_render()``` function, by accessing the Raspberry Pi Frame Buffer.
 
 #### 6821 parallel IO (PIA)
 
@@ -147,7 +148,22 @@ The Dragon computer's IO was provided by two MC6821 Peripheral Interface Adapter
 
 #### Keyboard
 
-tbd
+The keyboard interface uses an ATtiny85 AVR coded with a PS2 to SPI interface. It implements a PS2 keyboard interface and an SPI serial interface. The AVR connects with the Raspberry Pi's SPI. The code configures the keyboard, accepts scan codes, converts the AT scan codes to ASCII make/break codes for the [Dragon 32 emulation](https://github.com/eyalabraham/dragon) running on the Raspberry Pi.
+The AVR buffers the key codes in a small FIFO buffer, and the emulation periodically reads the buffer through the SPI interface.
+
+```
+ +-----+               +-----+            +-------+
+ |     |               |     |            |       |
+ |     +----[ MOSI>----+     |            |       |
+ |     |               |     |            |       |
+ |     +----< MISO]----+     +--< Data >--+ Level |
+ | RPi |               | AVR |            | shift +---> PS2 keyboard
+ |     +----[ SCL >----+     +--< CLK ]---+       |
+ |     |               |     |            |       |
+ |     +----[ RST >----+     |            |       |
+ |     |               |     |            |       |
+ +-----+               +-----+            +-------+
+```
 
 ### System
 
@@ -159,5 +175,9 @@ tbd
 
 - Serial console for monitoring execution state
 - Settable logging to serial console
-- Built in exception generation, through which, modules can log exceptions. For example: writing to a memory location that is defines as ROM.
+- Exception generation, through which, modules can log exceptions. For example: writing to a memory location that is defines as ROM.
+- Dragon emulation
+  - Sound sources: single-bit, DAC
+  - 
+
 

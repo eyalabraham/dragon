@@ -28,11 +28,22 @@
     #define     emu_assert(exp)     assert(exp)
 #endif
 
+#define     DB_ERR          0
+#define     DB_INFO         1
+
 /********************************************************************
  *  RPi bare meta module API
  */
-void    rpi_disable(void);
-void    rpi_enable(void);
-void    rpi_assert_handler(int assert_exp);
+uint8_t *rpi_fb_init(int h, int v);
+uint32_t rpi_system_timer(void);
+
+int      rpi_keyboard_init(void);
+int      rpi_keyboard_read(void);
+void     rpi_keyboard_reset(void);
+
+void     rpi_disable(void);
+void     rpi_enable(void);
+
+void     rpi_assert_handler(int assert_exp);
 
 #endif  /* __RPI_H__ */
