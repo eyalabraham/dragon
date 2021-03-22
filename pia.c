@@ -138,7 +138,7 @@ uint8_t scan_code_table[85][2] = {
         { 0b11111011,   6 }, // #84  Break
 };
 
-volatile uint8_t keyboard_rows[KBD_ROWS] = {
+uint8_t keyboard_rows[KBD_ROWS] = {
         255,    // row PIA0_PA0
         255,    // row PIA0_PA1
         255,    // row PIA0_PA2

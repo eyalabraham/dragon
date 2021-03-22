@@ -23,21 +23,19 @@
 /* -----------------------------------------
    Local definitions
 ----------------------------------------- */
-#define     AVT_RESET       RPI_GPIO_P1_15
+#define     AVR_RESET       RPI_GPIO_P1_15
+#define     PRI_TEST_POINT  RPI_GPIO_P1_16
 
 /* -----------------------------------------
    Module static functions
 ----------------------------------------- */
+static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix);
 static int fb_set_tty(const int mode);
 
 /* -----------------------------------------
    Module globals
 ----------------------------------------- */
 static int      fbfd = 0;                        // frame buffer file descriptor
-static uint8_t *fbp = 0L;
-static long int screen_size = 0;
-static struct fb_var_screeninfo var_info;
-static struct fb_fix_screeninfo fix_info;
 
 /********************************************************************
  * rpi_fb_init()
@@ -54,7 +52,7 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
 } /* end of RPI_BARE_METAL */
 #else
 {
-    int     page_size = 0;
+    uint8_t *fbp = 0L;
 
     // Open the frame buffer device file for reading and writing
     if ( fbfd == 0 )
@@ -69,53 +67,7 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
 
     printf("Frame buffer device is open\n");
 
-    // Get variable screen information
-    if (ioctl(fbfd, FBIOGET_VSCREENINFO, &var_info))
-    {
-        printf("%s: Error reading variable screen info\n", __FUNCTION__);
-        return 0L;
-    }
-
-    var_info.bits_per_pixel = 8;
-    var_info.xres = x_pix;
-    var_info.yres = y_pix;
-    var_info.xres_virtual = x_pix;
-    var_info.yres_virtual = y_pix;
-    if ( ioctl(fbfd, FBIOPUT_VSCREENINFO, &var_info) )
-    {
-        printf("%s: Error setting variable information\n", __FUNCTION__);
-    }
-
-    printf("Display info: %dx%d, %d bpp\n",
-           var_info.xres, var_info.yres,
-           var_info.bits_per_pixel);
-
-    // Get fixed screen information
-    if ( ioctl(fbfd, FBIOGET_FSCREENINFO, &fix_info) )
-    {
-        printf("%s: Error reading fixed information\n", __FUNCTION__);
-        return 0L;
-    }
-
-    printf("Device ID: %s\n", fix_info.id);
-
-    // map frame buffer to user memory
-    screen_size = var_info.xres * var_info.yres_virtual * var_info.bits_per_pixel / 8;
-    page_size = var_info.xres * var_info.yres;
-
-    printf("Screen_size=%ld, page_size=%d\n", screen_size, page_size);
-
-    if ( screen_size > fix_info.smem_len )
-    {
-        printf("%s: Screen_size over buffer limit\n", __FUNCTION__);
-        return 0L;
-    }
-
-    fbp = (uint8_t*)mmap(0,
-                         screen_size,
-                         PROT_READ | PROT_WRITE,
-                         MAP_SHARED,
-                         fbfd, 0);
+    fbp = fb_set_resolution(fbfd, x_pix, y_pix);
 
     if ( (int)fbp == -1 )
     {
@@ -127,6 +79,36 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
     if ( fb_set_tty(1) )
     {
         printf("%s: Could not set tty0 mode.\n", __FUNCTION__);
+        return 0L;
+    }
+
+    return fbp;
+}
+#endif  /* end of not RPI_BARE_METAL */
+
+/********************************************************************
+ * rpi_fb_resolution()
+ *
+ *  Change the RPi frame buffer resolution.
+ *  Frame buffer must be alerady initialized with rpi_fb_init()
+ *
+ *  param:  None
+ *  return: Pointer to frame buffer, or 0 if no error,
+ */
+uint8_t *rpi_fb_resolution(int x_pix, int y_pix)
+#if (RPI_BARE_METAL)
+{
+    return 0L;
+} /* end of RPI_BARE_METAL */
+#else
+{
+    uint8_t *fbp = 0L;
+
+    fbp = fb_set_resolution(fbfd, x_pix, y_pix);
+
+    if ( (int)fbp == -1 )
+    {
+        printf("%s: Failed to mmap()\n", __FUNCTION__);
         return 0L;
     }
 
@@ -180,10 +162,10 @@ int rpi_keyboard_init(void)
       return -1;
     }
 
-    /* TODO initialize GPIO for AVR reset line
+    /* Initialize GPIO for AVR reset line
      */
-    bcm2835_gpio_fsel(AVT_RESET, BCM2835_GPIO_FSEL_OUTP);
-    bcm2835_gpio_write(AVT_RESET, HIGH);
+    bcm2835_gpio_fsel(AVR_RESET, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_write(AVR_RESET, HIGH);
 
     rpi_keyboard_reset();
     sleep(3);
@@ -193,6 +175,12 @@ int rpi_keyboard_init(void)
     bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_32768);
     //bcm2835_spi_chipSelect(BCM2835_SPI_CS0);
     //bcm2835_spi_setChipSelectPolarity(BCM2835_SPI_CS0, LOW);
+
+    /* Initialize GPIO for RPi test point
+     * TODO Find a better place to do this
+     */
+    bcm2835_gpio_fsel(PRI_TEST_POINT, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_write(PRI_TEST_POINT, LOW);
 
     return 0;
 }
@@ -231,9 +219,9 @@ void rpi_keyboard_reset(void)
 } /* end of RPI_BARE_METAL */
 #else
 {
-    bcm2835_gpio_write(AVT_RESET, LOW);
+    bcm2835_gpio_write(AVR_RESET, LOW);
     usleep(10);
-    bcm2835_gpio_write(AVT_RESET, HIGH);
+    bcm2835_gpio_write(AVR_RESET, HIGH);
 }
 #endif  /* end of not RPI_BARE_METAL */
 
@@ -262,6 +250,31 @@ void rpi_enable(void)
 }
 
 /*------------------------------------------------
+ * rpi_testpoint_on()
+ *
+ *  Set test point to logic '1'
+ *
+ *  param:  None
+ *  return: None
+ */
+void rpi_testpoint_on(void)
+{
+    bcm2835_gpio_write(PRI_TEST_POINT, HIGH);
+}
+/*------------------------------------------------
+ * rpi_testpoint_on()
+ *
+ *  Set test point to logic '0'
+ *
+ *  param:  None
+ *  return: None
+ */
+void rpi_testpoint_off(void)
+{
+    bcm2835_gpio_write(PRI_TEST_POINT, LOW);
+}
+
+/*------------------------------------------------
  * rpi_assert_handler()
  *
  *  Assert handler for RPi bare metal mode.
@@ -277,6 +290,81 @@ void rpi_assert_handler(int assert_exp)
         // TODO implement assert behavior
     }
 }
+
+/********************************************************************
+ * fb_set_resolution()
+ *
+ *  Set screen resolution and return pointer to screen memory buffer
+ *
+ *  param:  Frame buffer device handle, horizontal and vertical resolution
+ *          in pixels
+ *  return: Pointer to memory, 0L on error
+ */
+static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
+#if (RPI_BARE_METAL)
+{
+    return -1;
+} /* end of RPI_BARE_METAL */
+#else
+{
+    uint8_t    *fbp = 0L;
+    int         page_size = 0;
+    long int    screen_size = 0;
+
+    struct  fb_var_screeninfo var_info;
+    struct  fb_fix_screeninfo fix_info;
+
+    // Get variable screen information
+    if (ioctl(fbfd, FBIOGET_VSCREENINFO, &var_info))
+    {
+        printf("%s: Error reading variable screen info\n", __FUNCTION__);
+        return 0L;
+    }
+
+    var_info.bits_per_pixel = 8;
+    var_info.xres = x_pix;
+    var_info.yres = y_pix;
+    var_info.xres_virtual = x_pix;
+    var_info.yres_virtual = y_pix;
+    if ( ioctl(fbfd, FBIOPUT_VSCREENINFO, &var_info) )
+    {
+        printf("%s: Error setting variable information\n", __FUNCTION__);
+    }
+
+    printf("Display info: %dx%d, %d bpp\n",
+           var_info.xres, var_info.yres,
+           var_info.bits_per_pixel);
+
+    // Get fixed screen information
+    if ( ioctl(fbfd, FBIOGET_FSCREENINFO, &fix_info) )
+    {
+        printf("%s: Error reading fixed information\n", __FUNCTION__);
+        return 0L;
+    }
+
+    printf("Device ID: %s\n", fix_info.id);
+
+    // map frame buffer to user memory
+    screen_size = var_info.xres * var_info.yres_virtual * var_info.bits_per_pixel / 8;
+    page_size = var_info.xres * var_info.yres;
+
+    printf("Screen_size=%ld, page_size=%d\n", screen_size, page_size);
+
+    if ( screen_size > fix_info.smem_len )
+    {
+        printf("%s: Screen_size over buffer limit\n", __FUNCTION__);
+        return 0L;
+    }
+
+    fbp = (uint8_t*)mmap(0,
+                         screen_size,
+                         PROT_READ | PROT_WRITE,
+                         MAP_SHARED,
+                         fbfd, 0);
+
+    return fbp;
+}
+#endif  /* end of not RPI_BARE_METAL */
 
 /********************************************************************
  * fb_set_tty()

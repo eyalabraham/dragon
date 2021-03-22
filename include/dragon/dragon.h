@@ -13,7 +13,7 @@
 #define     LOAD_ADDRESS    0x8000      // Dragon 32 ROM load address
 #define     RUN_ADDRESS     0x0000      // Change as required
 
-int code[] =
+int const code[] =
 {
     /* Auto generated from d32-rom.hex
      */

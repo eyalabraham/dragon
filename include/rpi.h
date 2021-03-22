@@ -35,6 +35,8 @@
  *  RPi bare meta module API
  */
 uint8_t *rpi_fb_init(int h, int v);
+uint8_t *rpi_fb_resolution(int h, int v);
+
 uint32_t rpi_system_timer(void);
 
 int      rpi_keyboard_init(void);
@@ -43,6 +45,9 @@ void     rpi_keyboard_reset(void);
 
 void     rpi_disable(void);
 void     rpi_enable(void);
+
+void     rpi_testpoint_on(void);
+void     rpi_testpoint_off(void);
 
 void     rpi_assert_handler(int assert_exp);
 

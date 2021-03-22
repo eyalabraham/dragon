@@ -51,8 +51,9 @@ ASCII art depiction of the system for the RPi bare metal implementation:
 
 This repository contains all the intermediate implementation steps and tags them for easy retrieval. Each step builds on the functionality of its predecessors and maintains backward compatibility. The latest release is listed first:
 
-- (next up) Dragon 32 computer emulation with video and semi-graphics modes.
-- Release tag 0.6 Minimal Dragon 32 computer emulation with text mode and keyboard.
+- (next up) Dragon 32 computer emulation with sound
+- Release tag 0.7 Dragon 32 computer emulation with video and semi-graphics modes.
+- [Release tag 0.6](https://github.com/eyalabraham/dragon/releases/tag/v0.6) Minimal Dragon 32 computer emulation with text mode and keyboard.
 - [Release tag 0.5](https://github.com/eyalabraham/dragon/releases/tag/v0.5) Timing profiles of CPU emulation running under Linux on Raspberry Pi 
 - [Release tag 0.4](https://github.com/eyalabraham/dragon/releases/tag/v0.4) Completed emulation and testing of SWI/SW2/SWI3 software interrupts and IRQ/FIRQ/NMI hardware interrupts.
 - [Release tag 0.3](https://github.com/eyalabraham/dragon/releases/tag/v0.3) Extended BASIC as used in the Tandy Coco 2 modified for the SBC with all I/O via serial on an emulation of [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html)

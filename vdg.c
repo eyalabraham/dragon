@@ -10,6 +10,7 @@
  *  February 6, 2021
  *
  *******************************************************************/
+//#include    <stdio.h>
 
 #include    <stdint.h>
 
@@ -19,6 +20,7 @@
 #include    "rpi.h"
 
 #include    "dragon/font.h"
+#include    "dragon/semigraph.h"
 
 /* -----------------------------------------
    Local definitions
@@ -44,18 +46,25 @@
 #define     FB_LIGHT_GREEN          10
 #define     FB_LIGHT_CYAN           11
 #define     FB_LIGHT_RED            12
-#define     FB_LIGHT_MAGENT         13
+#define     FB_LIGHT_MAGENTA        13
 #define     FB_YELLOW               14
 #define     FB_WHITE                15
 
 #define     CHAR_SEMI_GRAPHICS      0x80
 #define     CHAR_INVERSE            0x40
 
+#define     SEMI_GRAPH4_MASK        0x0f
+#define     SEMI_GRAPH6_MASK        0x1f
+
 #define     PIA_COLOR_SET           0x01
+
+#define     RES_HORZ_PIX            0
+#define     RES_VERT_PIX            1
+#define     RES_MEM                 2
 
 typedef enum
 {                       // Colors   Res.     Bytes BASIC
-    ALPHA_INTERNAL,     // 2 color  32x16    512   Default
+    ALPHA_INTERNAL = 0, // 2 color  32x16    512   Default
     ALPHA_EXTERNAL,     // 4 color  32x16    512
     SEMI_GRAPHICS_4,    // 8 color  64x32    512
     SEMI_GRAPHICS_6,    // 8 color  64x48    512
@@ -78,6 +87,7 @@ typedef enum
 ----------------------------------------- */
 static void vdg_put_pixel_fb(int color, int x, int y);
 static void vdg_draw_char(int c, int col, int row);
+static void vdg_draw_semig6(int c, int col, int row);
 static video_mode_t vdg_get_mode(void);
 
 /* -----------------------------------------
@@ -86,8 +96,40 @@ static video_mode_t vdg_get_mode(void);
 static uint8_t  video_ram_offset;
 static int      sam_video_mode;
 static uint8_t  pia_video_mode;
+static video_mode_t current_mode;
+static video_mode_t prev_mode;
 
 static uint8_t *fbp;
+
+static int const resolution[][3] = {
+    { SCREEN_WIDTH_PIX, SCREEN_HEIGHT_PIX, 512 },   // ALPHA_INTERNAL, 2 color 32x16 512B Default
+    { SCREEN_WIDTH_PIX, SCREEN_HEIGHT_PIX, 512 },   // ALPHA_EXTERNAL, 4 color 32x16 512B
+    { SCREEN_WIDTH_PIX, SCREEN_HEIGHT_PIX, 512 },   // SEMI_GRAPHICS_4, 8 color 64x32 512B
+    {  64,  48,  512 },                             // SEMI_GRAPHICS_6, 8 color 64x48 512B
+    {  64,  64, 2048 },                             // SEMI_GRAPHICS_8, 8 color 64x64 2048B
+    {  64,  96, 3072 },                             // SEMI_GRAPHICS_12, 8 color 64x96 3072B
+    {  64, 192, 6144 },                             // SEMI_GRAPHICS_24, 8 color 64x192 6144B
+    {  64,  64, 1024 },                             // GRAPHICS_1C, 4 color 64x64 1024B
+    { 128,  64, 1024 },                             // GRAPHICS_1R, 2 color 128x64 1024B
+    { 128,  64, 2048 },                             // GRAPHICS_2C, 4 color 128x64 2048B
+    { 128,  96, 1536 },                             // GRAPHICS_2R, 2 color 128x96 1536B PMODE 0
+    { 128,  96, 3072 },                             // GRAPHICS_3C, 4 color 128x96 3072B PMODE 1
+    { 256, 192, 3072 },                             // GRAPHICS_3R, 2 color 128x192 3072B PMODE 2
+    { 256, 192, 6144 },                             // GRAPHICS_6C, 4 color 128x192 6144B PMODE 3
+    { 256, 192, 6144 },                             // GRAPHICS_6R, 2 color 256x192 6144B PMODE 4
+    { 256, 192, 6144 },                             // DMA, 2 color 256x192 6144B
+};
+
+static int const colors[] = {
+        FB_GREEN,
+        FB_YELLOW,
+        FB_LIGHT_BLUE,
+        FB_RED,
+        FB_WHITE,        // TODO should be 'Buff'
+        FB_CYAN,
+        FB_LIGHT_MAGENTA,
+        FB_BROWN,
+};
 
 /*------------------------------------------------
  * vdg_init()
@@ -108,14 +150,22 @@ void vdg_init(void)
         emu_assert(0 && "Frame buffer error vdg_init()");
     }
 
-    /* TODO Clear screen to green?
+    /* Default startup mode of Dragon 32
      */
+    current_mode = ALPHA_INTERNAL;
+    prev_mode = ALPHA_INTERNAL;
 }
 
 /*------------------------------------------------
  * vdg_render()
  *
  *  Render video display.
+ *
+ *  TODO Consider writing to frame buffer 32-bit at a time instead of 8-bit
+ *       per write. This may reduce up render time. Profile render timing
+ *       with GPIO pin.
+ *       vdg_render() measured as running every 20mSec (~50Hz)
+ *       with a render time of approximately 20uSec.
  *
  *  param:  Nothing
  *  return: Nothing
@@ -124,6 +174,15 @@ void vdg_render(void)
 {
     static  uint32_t    last_refresh_time = 0;
     int     col, row, c;
+
+    uint8_t vdg_data;
+    int     color;
+    int     element;
+    int     vdg_mem_base;
+    int     vdg_mem_offset;
+    int     fb_offset = 0;
+
+    //rpi_testpoint_on();
 
     /* Set the refresh interval
      */
@@ -134,10 +193,25 @@ void vdg_render(void)
 
     last_refresh_time = rpi_system_timer();
 
-    /* Refresh the frame buffer with screen content per
-     * VDG/SAM mode settings
+    /* VDG/SAM mode settings
      */
-    switch ( vdg_get_mode() )
+    current_mode = vdg_get_mode();
+    if ( current_mode != prev_mode )
+    {
+        fbp = rpi_fb_resolution(resolution[current_mode][RES_HORZ_PIX], resolution[current_mode][RES_VERT_PIX]);
+        if ( fbp == 0L )
+        {
+            emu_assert(0 && "Frame buffer error vdg_render()");
+        }
+
+        prev_mode = current_mode;
+    }
+
+    /* Render to frame buffer with screen content
+     */
+    vdg_mem_base = video_ram_offset << 9;
+
+    switch ( current_mode )
     {
         case ALPHA_INTERNAL:
         case SEMI_GRAPHICS_4:
@@ -145,30 +219,87 @@ void vdg_render(void)
             {
                 for ( row = 0; row < SCREEN_HEIGHT_CHAR; row++ )
                 {
-                    c = mem_read(col + row * SCREEN_WIDTH_CHAR + (video_ram_offset << 9));
+                    c = mem_read(col + row * SCREEN_WIDTH_CHAR + vdg_mem_base);
                     vdg_draw_char(c, col, row);
                 }
             }
             break;
 
-        case ALPHA_EXTERNAL:
         case SEMI_GRAPHICS_6:
+            for ( col = 0; col < SCREEN_WIDTH_CHAR; col++ )
+            {
+                for ( row = 0; row < SCREEN_HEIGHT_CHAR; row++ )
+                {
+                    c = mem_read(col + row * SCREEN_WIDTH_CHAR + vdg_mem_base);
+                    vdg_draw_semig6(c, col, row);
+                }
+            }
+            break;
+
+        case GRAPHICS_1C:
+        case GRAPHICS_2C:
+        case GRAPHICS_3C:
+        case GRAPHICS_6C:
+            for ( vdg_mem_offset = 0; vdg_mem_offset < resolution[current_mode][RES_MEM]; vdg_mem_offset++)
+            {
+                vdg_data = mem_read(vdg_mem_base + vdg_mem_offset);
+
+                for ( element = 0; element < 4; element++)
+                {
+                    color = (int)((vdg_data >> (3 - element)) & 0x03) + (4 * (pia_video_mode & PIA_COLOR_SET));
+                    *((uint8_t*)(fbp + fb_offset)) = (uint8_t) color;
+                    fb_offset++;
+
+                    if ( current_mode == GRAPHICS_6C )
+                    {
+                        *((uint8_t*)(fbp + fb_offset)) = (uint8_t) color;
+                        fb_offset++;
+                    }
+                }
+            }
+            break;
+
+        case GRAPHICS_1R:
+        case GRAPHICS_2R:
+        case GRAPHICS_3R:
+        case GRAPHICS_6R:
+            for ( vdg_mem_offset = 0; vdg_mem_offset < resolution[current_mode][RES_MEM]; vdg_mem_offset++)
+            {
+                vdg_data = mem_read(vdg_mem_base + vdg_mem_offset);
+
+                for ( element = 0; element < 8; element++)
+                {
+                    color = (int)((vdg_data >> (7 - element)) & 0x01) * (4 * (pia_video_mode & PIA_COLOR_SET) + 1);
+                    if ( color > 0 )
+                        color = colors[(color - 1)];
+                    else
+                        color = FB_BLACK;
+
+                    *((uint8_t*)(fbp + fb_offset)) = (uint8_t) color;
+                    fb_offset++;
+
+                    if ( current_mode == GRAPHICS_3R )
+                    {
+                        *((uint8_t*)(fbp + fb_offset)) = (uint8_t) color;
+                        fb_offset++;
+                    }
+                }
+            }
             break;
 
         case SEMI_GRAPHICS_8:
         case SEMI_GRAPHICS_12:
         case SEMI_GRAPHICS_24:
-        case GRAPHICS_1C:
-        case GRAPHICS_1R:
-        case GRAPHICS_2C:
-        case GRAPHICS_2R:
-        case GRAPHICS_3C:
-        case GRAPHICS_3R:
-        case GRAPHICS_6C:
-        case GRAPHICS_6R:
+        case ALPHA_EXTERNAL:
         case DMA:
+            emu_assert(0 && "Mode not supported vdg_render()");
             break;
+
+        default:
+            emu_assert(0 && "Illegal mode vdg_render()");
     }
+
+    //rpi_testpoint_off();
 }
 
 /*------------------------------------------------
@@ -225,12 +356,12 @@ void vdg_set_mode_sam(int sam_mode)
  * vdg_set_mode_pia()
  *
  *  Set the video display mode from PIA device.
- *  Mode bit are as-is for PIA sifted 3 to the right:
- *  Bit 4   O   ScreenMode G / ^A
- *  Bit 3   O   ScreenMode GM2
- *  Bit 2   O   ScreenMode GM1
- *  Bit 1   O   ScreenMode GM0 / ^INT
- *  Bit 0   O   ScreenMode CSS
+ *  Mode bit are as-is for PIA shifted 3 to the right:
+ *  Bit 4   O   Screen Mode G / ^A
+ *  Bit 3   O   Screen Mode GM2
+ *  Bit 2   O   Screen Mode GM1
+ *  Bit 1   O   Screen Mode GM0 / ^INT
+ *  Bit 0   O   Screen Mode CSS
  *
  *  param:  Mode value.
  *  return: Nothing
@@ -267,7 +398,7 @@ static void vdg_put_pixel_fb(int color, int x, int y)
 /*------------------------------------------------
  * vdg_draw_char()
  *
- * Draw a character in the screen frame buffer.
+ * Draw a text of Semigraphics-4 character in the screen frame buffer.
  * Low level function to draw a character in the frame buffer, and
  * assumes an 8-bit per pixel video mode is selected.
  * Provide VDG character code 0..63, use fonf.h definition for
@@ -277,8 +408,6 @@ static void vdg_put_pixel_fb(int color, int x, int y)
  * The 'pia_video_mode' bit.0 to determine color (FB_GREEN or FB_BROWN).
  *
  * NOTE: no range checks are done on c, col, and row values!
- *
- * TODO: semigraphics output
  *
  * param:  c    VDG character code or semigraphics to be printed
  *         col  horizontal text position (0..31)
@@ -299,30 +428,71 @@ void vdg_draw_char(int c, int col, int row)
     px = col * FONT_WIDTH;
     py = row * FONT_HEIGHT;
 
-    /* Determine colors
-     */
-    bg_color = FB_BLACK;
-
-    if ( pia_video_mode & PIA_COLOR_SET )
-        fg_color = FB_BROWN;
-    else
-        fg_color = FB_GREEN;
-
-    if ( (uint8_t)c & CHAR_INVERSE )
-    {
-        char_row = fg_color;
-        fg_color = bg_color;
-        bg_color = char_row;
-    }
-
-    /* Output character pixels
+    /* Output semigraphics characters
+     * code 128 through 255.
      */
     if ( (uint8_t)c & CHAR_SEMI_GRAPHICS )
     {
-        // TODO: semigraphics
+        /* Determine colors
+         */
+        bg_color = FB_BLACK;
+        fg_color = colors[(int)((c & 0b01110000) >> 4)];
+
+        /* Character output
+         */
+        char_index = (int)(((uint8_t) c) & SEMI_GRAPH4_MASK);
+
+        for ( char_row = 0; char_row < FONT_HEIGHT; char_row++, py++ )
+        {
+            bit_pattern = semi_graph_4[char_index][char_row];
+
+            pix_pos = 0x80;
+
+            for ( char_col = 0; char_col < FONT_WIDTH; char_col++ )
+            {
+                /* Bit is set in Font, print pixel(s) in text color
+                 */
+                if ( (bit_pattern & pix_pos) )
+                {
+                    vdg_put_pixel_fb(fg_color, (px + char_col), py);
+                }
+                /* Bit is cleared in Font
+                 */
+                else
+                {
+                    vdg_put_pixel_fb(bg_color, (px + char_col), py);
+                }
+
+                /* Move to the next pixel position
+                 */
+                pix_pos = pix_pos >> 1;
+            }
+        }
     }
+
+    /* Output character codes 0 through 127
+     * inverse and non inverse video.
+     */
     else
     {
+        /* Determine colors
+         */
+        bg_color = FB_BLACK;
+
+        if ( pia_video_mode & PIA_COLOR_SET )
+            fg_color = FB_BROWN;
+        else
+            fg_color = FB_GREEN;
+
+        if ( (uint8_t)c & CHAR_INVERSE )
+        {
+            char_row = fg_color;
+            fg_color = bg_color;
+            bg_color = char_row;
+        }
+
+        /* Character output
+         */
         char_index = (int)(((uint8_t) c) & ~(CHAR_SEMI_GRAPHICS | CHAR_INVERSE));
 
         for ( char_row = 0; char_row < FONT_HEIGHT; char_row++, py++ )
@@ -355,6 +525,69 @@ void vdg_draw_char(int c, int col, int row)
 }
 
 /*------------------------------------------------
+ * vdg_draw_semig6()
+ *
+ * Draw a semigraphics-6 character in the screen frame buffer.
+ *
+ * NOTE: no range checks are done on c, col, and row values!
+ *
+ * param:  c    semigraphics 6 code
+ *         col  horizontal text position (0..31)
+ *         row  vertical text position (0..15)
+ * return: none
+ *
+ */
+static void vdg_draw_semig6(int c, int col, int row)
+{
+    uint8_t     pix_pos, bit_pattern;
+    int         px, py;
+    int         char_row, char_col, char_index;
+    int         fg_color, bg_color;
+
+    /* Convert text col and row to pixel positions
+     * and adjust for non-semigraphics
+     */
+    px = col * FONT_WIDTH;
+    py = row * FONT_HEIGHT;
+
+    /* Determine colors
+     */
+    bg_color = FB_BLACK;
+    fg_color = colors[(int)(((c & 0b11000000) >> 6) + (4 * (pia_video_mode & PIA_COLOR_SET)))];
+
+    /* Character output
+     */
+    char_index = (int)(((uint8_t) c) & SEMI_GRAPH6_MASK);
+
+    for ( char_row = 0; char_row < FONT_HEIGHT; char_row++, py++ )
+    {
+        bit_pattern = semi_graph_6[char_index][char_row];
+
+        pix_pos = 0x80;
+
+        for ( char_col = 0; char_col < FONT_WIDTH; char_col++ )
+        {
+            /* Bit is set in Font, print pixel(s) in text color
+             */
+            if ( (bit_pattern & pix_pos) )
+            {
+                vdg_put_pixel_fb(fg_color, (px + char_col), py);
+            }
+            /* Bit is cleared in Font
+             */
+            else
+            {
+                vdg_put_pixel_fb(bg_color, (px + char_col), py);
+            }
+
+            /* Move to the next pixel position
+             */
+            pix_pos = pix_pos >> 1;
+        }
+    }
+}
+
+/*------------------------------------------------
  * vdg_get_mode()
  *
  * Parse 'sam_video_mode' and 'pia_video_mode' and return video mode type.
@@ -371,7 +604,7 @@ static video_mode_t vdg_get_mode(void)
     {
         mode = DMA;
     }
-    else if ( (pia_video_mode & 0x10) == 1 )
+    else if ( (pia_video_mode & 0x10) )
     {
         switch ( pia_video_mode & 0x0e  )
         {
@@ -430,6 +663,10 @@ static video_mode_t vdg_get_mode(void)
         {
             mode = SEMI_GRAPHICS_24;
         }
+    }
+    else
+    {
+        emu_assert(0 && "Cannot resolve mode vdg_get_mode()");
     }
 
     return mode;
