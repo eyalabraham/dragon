@@ -7,8 +7,11 @@
  *
  *******************************************************************/
 
+//#include    <stdio.h>
+
 #include    <stdint.h>
 
+#include    "cpu.h"
 #include    "rpi.h"
 #include    "mem.h"
 #include    "vdg.h"
@@ -17,23 +20,36 @@
 /* -----------------------------------------
    Local definitions
 ----------------------------------------- */
-#define     PIA0_PA     0xff00
-#define     PIA0_PB     0xff02
-#define     PIA1_PA     0xff20
-#define     PIA1_PB     0xff22
+#define     PIA0_PA             0xff00
+#define     PIA0_CRA            0xff01
+#define     PIA0_PB             0xff02
+#define     PIA0_CRB            0xff03
 
-#define     KBD_ROWS    7
+#define     PIA1_PA             0xff20
+#define     PIA1_PB             0xff22
+
+#define     KBD_ROWS            7
+
+#define     PIA_VSYNC_INTERVAL  ((uint32_t)(1000000/50))
+
+#define     PIA_CR_INTR         0x01    // CA1/CB1 interrupt enable bit
+#define     PIA_CR_IRQ_STAT     0x80    // IRQA1/IRQB1 status bit
 
 /* -----------------------------------------
    Module static functions
 ----------------------------------------- */
 static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_t op);
+static uint8_t io_handler_pia0_crb(uint16_t address, uint8_t data, mem_operation_t op);
+static uint8_t io_handler_pia1_pa(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia1_pb(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t get_keyboard_column_scan(uint8_t data);
 
 /* -----------------------------------------
    Module globals
 ----------------------------------------- */
+int     pia0_cb1_int_enabled = 0;
+uint8_t pia0_crb = 0;
+
 /*
     Dragon keyboard map
 
@@ -158,20 +174,45 @@ uint8_t keyboard_rows[KBD_ROWS] = {
  */
 void pia_init(void)
 {
-    /* Initialize keyboard interface to the PS2 keyboard and AVR
-     * through the serial link (SPI)
-     */
-    if ( rpi_keyboard_init() == -1 )
-    {
-        emu_assert(0 && "Keyboard initialization error pia_init()");
-    }
-
     /* Link IO call-backs
      */
     mem_write(PIA0_PA, 0xff);
-    mem_define_io(PIA0_PB, PIA0_PB, io_handler_pia0_pb);
+    mem_define_io(PIA0_PB, PIA0_PB, io_handler_pia0_pb);    // Keyboard column output
+    mem_define_io(PIA0_CRB, PIA0_CRB, io_handler_pia0_crb); // Keyboard column output
 
-    mem_define_io(PIA1_PB, PIA1_PB, io_handler_pia1_pb);
+    mem_define_io(PIA1_PA, PIA1_PA, io_handler_pia1_pa);    // 6-bit DAC output
+
+    mem_define_io(PIA1_PB, PIA1_PB, io_handler_pia1_pb);    // VDG mode bits output
+}
+
+/*------------------------------------------------
+ * pia_hsync_irq()
+ *
+ *  Assert an IRQ interrupt at Field Sync refresh rate
+ *
+ *  param:  Nothing
+ *  return: Nothing
+ */
+void pia_vsync_irq(void)
+{
+    static  uint32_t    last_vsync_time = 0;
+
+    /* Check interrupt cycle time
+     */
+    if ( (rpi_system_timer() - last_vsync_time) < PIA_VSYNC_INTERVAL )
+    {
+        return;
+    }
+
+    last_vsync_time = rpi_system_timer();
+
+    /* Assert interrupt if enabled
+     */
+    if ( pia0_cb1_int_enabled )
+    {
+        pia0_crb |= PIA_CR_IRQ_STAT;
+        cpu_irq(1);
+    }
 }
 
 /*------------------------------------------------
@@ -238,6 +279,60 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
          * for PIA0_PA bit pattern
          */
         mem_write(PIA0_PA, (int) get_keyboard_column_scan(data));
+    }
+
+    /* A read to the port address has the effect of resetting
+     * the IRQ status line
+     */
+    else
+    {
+        pia0_crb &= ~PIA_CR_IRQ_STAT;
+        cpu_irq(0);
+    }
+
+    return data;
+}
+
+/*------------------------------------------------
+ * io_handler_pia0_crb()
+ *
+ *  IO call-back handler 0xFF03 PIA0-B Control register
+ *
+ *  param:  Call address, data byte for write operation, and operation type
+ *  return: Status or data byte
+ */
+static uint8_t io_handler_pia0_crb(uint16_t address, uint8_t data, mem_operation_t op)
+{
+    if ( op == MEM_WRITE )
+    {
+        pia0_crb = data;
+
+        if ( pia0_crb & PIA_CR_INTR )
+            pia0_cb1_int_enabled = 1;
+        else
+            pia0_cb1_int_enabled = 0;
+    }
+
+    return pia0_crb;
+}
+
+/*------------------------------------------------
+ * io_handler_pia1_pa()
+ *
+ *  IO call-back handler 0xFF22 Dir PIA1-A output to 6-bit DAC
+ *  Traps and handles writes to PA bit.2 to bit.7
+ *
+ *  param:  Call address, data byte for write operation, and operation type
+ *  return: Status or data byte
+ */
+static uint8_t io_handler_pia1_pa(uint16_t address, uint8_t data, mem_operation_t op)
+{
+    int     dac_output;
+
+    if ( op == MEM_WRITE )
+    {
+        dac_output = (data >> 2) & 0x3f;
+        rpi_write_dac(dac_output);
     }
 
     return data;

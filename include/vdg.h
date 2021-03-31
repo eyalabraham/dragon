@@ -15,7 +15,6 @@
 
 void vdg_init(void);
 void vdg_render(void);
-void vdg_field_sync(void);
 
 void vdg_set_video_offset(uint8_t offset);
 void vdg_set_mode_sam(int sam_mode);

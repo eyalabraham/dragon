@@ -12,4 +12,6 @@
 
 void pia_init(void);
 
+void pia_vsync_irq(void);
+
 #endif  /* __PIA_H__ */

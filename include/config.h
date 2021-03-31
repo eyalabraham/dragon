@@ -13,6 +13,9 @@
 /********************************************************************
  *  Miscellaneous
  */
+#define     RPI_MODEL_B             1
+//#define     RPI_MODEL_ZERO      1
+
 #define     RPI_BARE_METAL          0
 
 #endif  /* __config_h__ */

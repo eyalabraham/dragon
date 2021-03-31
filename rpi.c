@@ -23,8 +23,18 @@
 /* -----------------------------------------
    Local definitions
 ----------------------------------------- */
-#define     AVR_RESET       RPI_GPIO_P1_15
-#define     PRI_TEST_POINT  RPI_GPIO_P1_16
+#define     AVR_RESET       RPI_V2_GPIO_P1_11
+#define     PRI_TEST_POINT  RPI_V2_GPIO_P1_07
+
+#define     DAC_BIT0        RPI_V2_GPIO_P1_15
+#define     DAC_BIT1        RPI_V2_GPIO_P1_16
+#define     DAC_BIT2        RPI_V2_GPIO_P1_18
+#define     DAC_BIT3        RPI_V2_GPIO_P1_22
+#define     DAC_BIT4        RPI_V2_GPIO_P1_12
+#define     DAC_BIT5        RPI_V2_GPIO_P1_13
+
+#define     DAC_BIT_MASK    ((1 << DAC_BIT0) | (1 << DAC_BIT1) | (1 << DAC_BIT2) | \
+                             (1 << DAC_BIT3) | (1 << DAC_BIT4) | (1 << DAC_BIT5))
 
 /* -----------------------------------------
    Module static functions
@@ -36,6 +46,73 @@ static int fb_set_tty(const int mode);
    Module globals
 ----------------------------------------- */
 static int      fbfd = 0;                        // frame buffer file descriptor
+
+/*------------------------------------------------
+ * rpi_gpio_init()
+ *
+ *  Initialize RPi GPIO functions:
+ *  - Serial interface to AVR (PS2 keyboard controller)
+ *  - Reset output GPIO to AVR
+ *  - Output timing test point
+ *  - Output GPIO bits to 6-bit DAC
+ *
+ *  param:  None
+ *  return: -1 fail, 0 ok
+ */
+int rpi_gpio_init(void)
+#if (RPI_BARE_METAL)
+{
+    return 0L;
+} /* end of RPI_BARE_METAL */
+#else
+{
+    if (!bcm2835_init())
+    {
+      printf("bcm2835_init failed. Are you running as root??\n");
+      return -1;
+    }
+
+    if (!bcm2835_spi_begin())
+    {
+      printf("bcm2835_spi_begin failed. Are you running as root??\n");
+      return -1;
+    }
+
+    /* Initialize GPIO for AVR reset line
+     */
+    bcm2835_gpio_fsel(AVR_RESET, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_write(AVR_RESET, HIGH);
+
+    rpi_keyboard_reset();
+    sleep(3);
+
+    /* Initialize GPIO for RPi test point
+     */
+    bcm2835_gpio_fsel(PRI_TEST_POINT, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_write(PRI_TEST_POINT, LOW);
+
+    /* Initialize 6-bit DAC GPIO lines
+     */
+    bcm2835_gpio_fsel(DAC_BIT0, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_fsel(DAC_BIT1, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_fsel(DAC_BIT2, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_fsel(DAC_BIT3, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_fsel(DAC_BIT4, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_fsel(DAC_BIT5, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_clr_multi((1 << DAC_BIT0) | (1 << DAC_BIT1) | (1 << DAC_BIT2) |
+                           (1 << DAC_BIT3) | (1 << DAC_BIT4) | (1 << DAC_BIT5));
+
+    /* Initialize SPI
+     */
+    bcm2835_spi_setBitOrder(BCM2835_SPI_BIT_ORDER_MSBFIRST);
+    bcm2835_spi_setDataMode(BCM2835_SPI_MODE0);
+    bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_128);
+    //bcm2835_spi_chipSelect(BCM2835_SPI_CS0);
+    //bcm2835_spi_setChipSelectPolarity(BCM2835_SPI_CS0, LOW);
+
+    return 0;
+}
+#endif  /* end of not RPI_BARE_METAL */
 
 /********************************************************************
  * rpi_fb_init()
@@ -136,57 +213,6 @@ uint32_t rpi_system_timer(void)
 #endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
- * rpi_keyboard_init()
- *
- *  Initialize serial interface to AVR (PS2 keyboard controller)
- *
- *  param:  None
- *  return: -1 fail, 0 ok
- */
-int rpi_keyboard_init(void)
-#if (RPI_BARE_METAL)
-{
-    return 0L;
-} /* end of RPI_BARE_METAL */
-#else
-{
-    if (!bcm2835_init())
-    {
-      printf("bcm2835_init failed. Are you running as root??\n");
-      return -1;
-    }
-
-    if (!bcm2835_spi_begin())
-    {
-      printf("bcm2835_spi_begin failed. Are you running as root??\n");
-      return -1;
-    }
-
-    /* Initialize GPIO for AVR reset line
-     */
-    bcm2835_gpio_fsel(AVR_RESET, BCM2835_GPIO_FSEL_OUTP);
-    bcm2835_gpio_write(AVR_RESET, HIGH);
-
-    rpi_keyboard_reset();
-    sleep(3);
-
-    bcm2835_spi_setBitOrder(BCM2835_SPI_BIT_ORDER_MSBFIRST);
-    bcm2835_spi_setDataMode(BCM2835_SPI_MODE0);
-    bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_32768);
-    //bcm2835_spi_chipSelect(BCM2835_SPI_CS0);
-    //bcm2835_spi_setChipSelectPolarity(BCM2835_SPI_CS0, LOW);
-
-    /* Initialize GPIO for RPi test point
-     * TODO Find a better place to do this
-     */
-    bcm2835_gpio_fsel(PRI_TEST_POINT, BCM2835_GPIO_FSEL_OUTP);
-    bcm2835_gpio_write(PRI_TEST_POINT, LOW);
-
-    return 0;
-}
-#endif  /* end of not RPI_BARE_METAL */
-
-/*------------------------------------------------
  * rpi_keyboard_read()
  *
  *  Read serial interface from AVR (PS2 keyboard controller)
@@ -222,6 +248,39 @@ void rpi_keyboard_reset(void)
     bcm2835_gpio_write(AVR_RESET, LOW);
     usleep(10);
     bcm2835_gpio_write(AVR_RESET, HIGH);
+}
+#endif  /* end of not RPI_BARE_METAL */
+
+/*------------------------------------------------
+ * rpi_write_dac()
+ *
+ *  Write 6-bit value to DAC
+ *
+ *  param:  DAC value 0x00 to 0x3f
+ *  return: None
+ */
+void rpi_write_dac(int dac_value)
+#if (RPI_BARE_METAL)
+{
+} /* end of RPI_BARE_METAL */
+#else
+{
+    uint32_t    dac_bit_values = 0;
+
+    /* Arrange GPIO bit pin outputs
+     */
+    dac_bit_values = (~dac_value) << 22;
+
+#if (RPI_MODEL_B)
+    if ( dac_bit_values & 0x04000000 )
+        dac_bit_values |= (1 << DAC_BIT4);
+#endif
+
+    /* Set the first 32 GPIO output pins specified in the 'mask' to the value given by 'value'
+     *  value: values required for each bit masked in by mask.
+     *  mask: of pins to affect
+     */
+    bcm2835_gpio_write_mask(dac_bit_values, (uint32_t) DAC_BIT_MASK);
 }
 #endif  /* end of not RPI_BARE_METAL */
 

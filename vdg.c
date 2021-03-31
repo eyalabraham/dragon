@@ -58,6 +58,9 @@
 
 #define     PIA_COLOR_SET           0x01
 
+#define     DEF_COLOR_CSS_0         0
+#define     DEF_COLOR_CSS_1         4
+
 #define     RES_HORZ_PIX            0
 #define     RES_VERT_PIX            1
 #define     RES_MEM                 2
@@ -246,7 +249,8 @@ void vdg_render(void)
 
                 for ( element = 0; element < 4; element++)
                 {
-                    color = (int)((vdg_data >> (3 - element)) & 0x03) + (4 * (pia_video_mode & PIA_COLOR_SET));
+                    color = (int)((vdg_data >> (2 * (3 - element))) & 0x03) + (4 * (pia_video_mode & PIA_COLOR_SET));
+                    color = colors[color];
                     *((uint8_t*)(fbp + fb_offset)) = (uint8_t) color;
                     fb_offset++;
 
@@ -269,11 +273,28 @@ void vdg_render(void)
 
                 for ( element = 0; element < 8; element++)
                 {
+/*
                     color = (int)((vdg_data >> (7 - element)) & 0x01) * (4 * (pia_video_mode & PIA_COLOR_SET) + 1);
                     if ( color > 0 )
                         color = colors[(color - 1)];
                     else
                         color = FB_BLACK;
+*/
+                    if ( (vdg_data >> (7 - element)) & 0x01 )
+                    {
+                        if ( pia_video_mode & PIA_COLOR_SET )
+                        {
+                            color = colors[DEF_COLOR_CSS_1];
+                        }
+                        else
+                        {
+                            color = colors[DEF_COLOR_CSS_0];
+                        }
+                    }
+                    else
+                    {
+                        color = FB_BLACK;
+                    }
 
                     *((uint8_t*)(fbp + fb_offset)) = (uint8_t) color;
                     fb_offset++;
@@ -300,19 +321,6 @@ void vdg_render(void)
     }
 
     //rpi_testpoint_off();
-}
-
-/*------------------------------------------------
- * vdg_field_sync()
- *
- *  Generate an IRQ request at 50Hz rate
- *  emulating video field sync signal rate.
- *
- *  param:  Nothing
- *  return: Nothing
- */
-void vdg_field_sync(void)
-{
 }
 
 /*------------------------------------------------
@@ -480,9 +488,9 @@ void vdg_draw_char(int c, int col, int row)
         bg_color = FB_BLACK;
 
         if ( pia_video_mode & PIA_COLOR_SET )
-            fg_color = FB_BROWN;
+            fg_color = colors[DEF_COLOR_CSS_1];
         else
-            fg_color = FB_GREEN;
+            fg_color = colors[DEF_COLOR_CSS_0];
 
         if ( (uint8_t)c & CHAR_INVERSE )
         {

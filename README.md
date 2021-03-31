@@ -51,12 +51,13 @@ ASCII art depiction of the system for the RPi bare metal implementation:
 
 This repository contains all the intermediate implementation steps and tags them for easy retrieval. Each step builds on the functionality of its predecessors and maintains backward compatibility. The latest release is listed first:
 
-- (next up) Dragon 32 computer emulation with sound
-- Release tag 0.7 Dragon 32 computer emulation with video and semi-graphics modes.
+- (next up) Joystick support.
+- Release tag 0.8 Dragon 32 computer emulation with sound.
+- [Release tag 0.7](https://github.com/eyalabraham/dragon/releases/tag/v0.7) Dragon 32 computer emulation with video and semi-graphics modes.
 - [Release tag 0.6](https://github.com/eyalabraham/dragon/releases/tag/v0.6) Minimal Dragon 32 computer emulation with text mode and keyboard.
-- [Release tag 0.5](https://github.com/eyalabraham/dragon/releases/tag/v0.5) Timing profiles of CPU emulation running under Linux on Raspberry Pi 
+- [Release tag 0.5](https://github.com/eyalabraham/dragon/releases/tag/v0.5) Timing profiles of CPU emulation running under Linux on Raspberry Pi .
 - [Release tag 0.4](https://github.com/eyalabraham/dragon/releases/tag/v0.4) Completed emulation and testing of SWI/SW2/SWI3 software interrupts and IRQ/FIRQ/NMI hardware interrupts.
-- [Release tag 0.3](https://github.com/eyalabraham/dragon/releases/tag/v0.3) Extended BASIC as used in the Tandy Coco 2 modified for the SBC with all I/O via serial on an emulation of [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html)
+- [Release tag 0.3](https://github.com/eyalabraham/dragon/releases/tag/v0.3) Extended BASIC as used in the Tandy Coco 2 modified for the SBC with all I/O via serial on an emulation of [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html).
 - [Release tag 0.2](https://github.com/eyalabraham/dragon/releases/tag/v0.2) [SBUG-E 6809 Monitor](https://deramp.com/swtpc.com/MP_09/SBUG_Index.htm) program running in an emulated [SWTPC computer](https://en.wikipedia.org/wiki/SWTPC).
 - [Release tag 0.1](https://github.com/eyalabraham/dragon/releases/tag/v0.1) Stand alone emulation driver ```emu09.c``` with CPU assembly op-code tests for ```mem.c``` and ```cpu.c``` modules. Probably around 80% confidence in accuracy of CPU emulation code, will add tests and bug fixes in later releases.
 
@@ -147,7 +148,7 @@ The VDG is Motorola's [MC6847](https://en.wikipedia.org/wiki/Motorola_6847) vide
 
 The Dragon computer's IO was provided by two MC6821 Peripheral Interface Adapters (PIAs).
 
-#### Keyboard
+##### Keyboard
 
 The keyboard interface uses an ATtiny85 AVR coded with a PS2 to SPI interface. It implements a PS2 keyboard interface and an SPI serial interface. The AVR connects with the Raspberry Pi's SPI. The code configures the keyboard, accepts scan codes, converts the AT scan codes to ASCII make/break codes for the [Dragon 32 emulation](https://github.com/eyalabraham/dragon) running on the Raspberry Pi.
 The AVR buffers the key codes in a small FIFO buffer, and the emulation periodically reads the buffer through the SPI interface.
@@ -165,6 +166,34 @@ The AVR buffers the key codes in a small FIFO buffer, and the emulation periodic
  |     |               |     |            |       |
  +-----+               +-----+            +-------+
 ```
+
+##### Sound
+
+The Dragon's sound system is built around a simple 6-bit Digital to Analog (DAC). The DAC is a common [resistor ladder](https://en.wikipedia.org/wiki/Resistor_ladder) that is driven by a 6-bit MC4050 buffer. The Dragon emulator uses a similar setup with a 6-bit TTL buffer (74S14) and similar resistor values. The GPIO pins of a Raspberry Pi B do not provide a contiguous set of output bits, so bit position translation is implemented.
+
+```
+                                                            5v
+                                                            |
+ DAC    RPi B        (RPi Zero)                           [100K]
+                                           +-------+        |
+ bit.0  GPIO22 P1.15 (GPIO22 P1.15 )  >----+       +-[330K]-+
+ bit.1  GPIO23 P1.16 (GPIO23 P1.16 )  >----+       +-[150K]-+
+ bit.2  GPIO24 P1.18 (GPIO24 P1.18 )  >----+ 74S14 +-[ 82K]-+
+ bit.3  GPIO25 P1.22 (GPIO25 P1.22 )  >----+       +-[ 39K]-+
+ bit.4  GPIO18 P1.12 (GPIO26 P1.37 )  >----+       +-[ 20K]-+
+ bit.5  GPIO27 P1.13 (GPIO27 P1.13 )  >----+       +-[ 10K]-+--->
+                                           +-------+
+ 
+ 74S14 pin output high voltage 4.56v, low voltage 0.16v
+```
+
+##### Joystick
+
+TBD
+
+##### Field Sync IRQ
+
+In the Dragon computer, the system generates an IRQ interrupt at the frame synchronization (FS) rate of 50 or 60Hz. The FS signal is routed through PIA0-CB1 (control register B-side) and generates an IRQ signal. Resetting the interrupt request by reading data register PIA0 B-side.
 
 ### System
 

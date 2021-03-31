@@ -34,14 +34,17 @@
 /********************************************************************
  *  RPi bare meta module API
  */
+int      rpi_gpio_init(void);
+
 uint8_t *rpi_fb_init(int h, int v);
 uint8_t *rpi_fb_resolution(int h, int v);
 
 uint32_t rpi_system_timer(void);
 
-int      rpi_keyboard_init(void);
 int      rpi_keyboard_read(void);
 void     rpi_keyboard_reset(void);
+
+void     rpi_write_dac(int);
 
 void     rpi_disable(void);
 void     rpi_enable(void);

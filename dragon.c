@@ -24,6 +24,7 @@
    Dragon 32 ROM image
 ----------------------------------------- */
 #include    "dragon/dragon.h"
+#include    "dragon/doodle-bug.h"
 
 /* -----------------------------------------
    Module definition
@@ -45,6 +46,8 @@ int main(int argc, char *argv[])
     uint16_t        break_point = 0xffff;
     cpu_state_t     cpu_state;
 
+    /* ROM code load
+     */
     printf("Loading code... ");
     i = 0;
     while ( code[i] != -1 )
@@ -54,7 +57,21 @@ int main(int argc, char *argv[])
     }
     printf("Loaded %i bytes.\n", i - 1);
 
+    printf("Loading cartridge... ");
+    i = 0;
+    while ( cartridge[i] != -1 )
+    {
+        mem_write(i + CART_LOAD_ADDRESS, cartridge[i]);
+        i++;
+    }
+    printf("Loaded %i bytes.\n", i - 1);
+
     mem_define_rom(DRAGON_ROM_START, DRAGON_ROM_END);
+
+    /* Emulation initialization
+     */
+    if ( rpi_gpio_init() == -1 )
+        return 1;
 
     sam_init();
     pia_init();
@@ -80,7 +97,7 @@ int main(int argc, char *argv[])
 
         vdg_render();
 
-        vdg_field_sync();
+        pia_vsync_irq();
     }
     while ( cpu_state.pc != break_point );
 

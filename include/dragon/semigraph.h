@@ -7,8 +7,8 @@
  *
  *******************************************************************/
 
-#ifndef __SEMIGRAPG_H__
-#define __SEMIGRAPG_H__
+#ifndef __SEMIGRAPH_H__
+#define __SEMIGRAPH_H__
 
 #include    <stdint.h>
 
@@ -103,4 +103,4 @@ uint8_t const semi_graph_6[][12] = {
     { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }, //
 };
 
-#endif  /* __SEMIGRAPG_H__ */
+#endif  /* __SEMIGRAPH_H__ */
