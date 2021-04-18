@@ -651,7 +651,7 @@ static video_mode_t vdg_get_mode(void)
             // Character bit.7 selects SEMI_GRAPHICS_4;
         }
         else if ( sam_video_mode == 0 &&
-                (pia_video_mode & 0x02) == 1 )
+                (pia_video_mode & 0x02) )
         {
             mode = ALPHA_EXTERNAL;
             // Character bit.7 selects SEMI_GRAPHICS_6;

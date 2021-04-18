@@ -23,18 +23,29 @@
 /* -----------------------------------------
    Local definitions
 ----------------------------------------- */
-#define     AVR_RESET       RPI_V2_GPIO_P1_11
-#define     PRI_TEST_POINT  RPI_V2_GPIO_P1_07
+#define     AVR_RESET           RPI_V2_GPIO_P1_11
+#define     PRI_TEST_POINT      RPI_V2_GPIO_P1_07
 
-#define     DAC_BIT0        RPI_V2_GPIO_P1_15
-#define     DAC_BIT1        RPI_V2_GPIO_P1_16
-#define     DAC_BIT2        RPI_V2_GPIO_P1_18
-#define     DAC_BIT3        RPI_V2_GPIO_P1_22
-#define     DAC_BIT4        RPI_V2_GPIO_P1_12
-#define     DAC_BIT5        RPI_V2_GPIO_P1_13
+#define     AUDIO_MUX0          RPI_V2_GPIO_P1_03
+#define     AUDIO_MUX1          RPI_V2_GPIO_P1_05
+#define     AUDIO_MUX_MASK      ((1 << AUDIO_MUX0) | (1 << AUDIO_MUX1))
 
-#define     DAC_BIT_MASK    ((1 << DAC_BIT0) | (1 << DAC_BIT1) | (1 << DAC_BIT2) | \
-                             (1 << DAC_BIT3) | (1 << DAC_BIT4) | (1 << DAC_BIT5))
+#define     DAC_BIT0            RPI_V2_GPIO_P1_15
+#define     DAC_BIT1            RPI_V2_GPIO_P1_16
+#define     DAC_BIT2            RPI_V2_GPIO_P1_18
+#define     DAC_BIT3            RPI_V2_GPIO_P1_22
+#if (RPI_MODEL_B)
+#define     DAC_BIT4            RPI_V2_GPIO_P1_12
+#else
+#define     DAC_BIT4            RPI_V2_GPIO_P1_37
+#endif
+#define     DAC_BIT5            RPI_V2_GPIO_P1_13
+
+#define     JOYSTK_COMP         RPI_V2_GPIO_P1_26   // Joystick
+#define     JOYSTK_BUTTON       RPI_V2_GPIO_P1_24   // Joystick button
+
+#define     DAC_BIT_MASK        ((1 << DAC_BIT0) | (1 << DAC_BIT1) | (1 << DAC_BIT2) | \
+                                 (1 << DAC_BIT3) | (1 << DAC_BIT4) | (1 << DAC_BIT5))
 
 /* -----------------------------------------
    Module static functions
@@ -91,7 +102,7 @@ int rpi_gpio_init(void)
     bcm2835_gpio_fsel(PRI_TEST_POINT, BCM2835_GPIO_FSEL_OUTP);
     bcm2835_gpio_write(PRI_TEST_POINT, LOW);
 
-    /* Initialize 6-bit DAC GPIO lines
+    /* Initialize 6-bit DAC and joystick comparator GPIO lines
      */
     bcm2835_gpio_fsel(DAC_BIT0, BCM2835_GPIO_FSEL_OUTP);
     bcm2835_gpio_fsel(DAC_BIT1, BCM2835_GPIO_FSEL_OUTP);
@@ -101,6 +112,16 @@ int rpi_gpio_init(void)
     bcm2835_gpio_fsel(DAC_BIT5, BCM2835_GPIO_FSEL_OUTP);
     bcm2835_gpio_clr_multi((1 << DAC_BIT0) | (1 << DAC_BIT1) | (1 << DAC_BIT2) |
                            (1 << DAC_BIT3) | (1 << DAC_BIT4) | (1 << DAC_BIT5));
+
+    bcm2835_gpio_fsel(JOYSTK_COMP, BCM2835_GPIO_FSEL_INPT);
+    bcm2835_gpio_set_pud(JOYSTK_COMP, BCM2835_GPIO_PUD_OFF);
+
+    bcm2835_gpio_fsel(JOYSTK_BUTTON, BCM2835_GPIO_FSEL_INPT);
+    bcm2835_gpio_set_pud(JOYSTK_BUTTON, BCM2835_GPIO_PUD_UP);
+
+    bcm2835_gpio_fsel(AUDIO_MUX0, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_fsel(AUDIO_MUX1, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_clr_multi((1 << AUDIO_MUX0) | (1 << AUDIO_MUX1));
 
     /* Initialize SPI
      */
@@ -252,6 +273,83 @@ void rpi_keyboard_reset(void)
 #endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
+ * rpi_joystk_comp()
+ *
+ *  Read joystick comparator GPIO input pin and return its value.
+ *
+ *  param:  None
+ *  return: GPIO joystick comparator input level
+ */
+int rpi_joystk_comp(void)
+#if (RPI_BARE_METAL)
+{
+} /* end of RPI_BARE_METAL */
+#else
+{
+    /* The delay is needed to allow the DAC and comparator
+     * to stabilize the output, and propagate it through the
+     * 5v/3.3v level-shifter that is bandwidth-limited.
+     * The Dragon code is limited by a ~13uSec between writing
+     * to DAC and reading comparator input:
+     *
+     *      STB     PIA1DA          ; send value to D/A converter
+     *      TST     PIA0DA          ; read result value, comparator output in bit 7
+     *
+     * A 20uSec delay seems to stabilize the joystick ADC readings.
+     *
+     * TODO: Try bcm2835_st_delay()?
+     *
+     */
+    bcm2835_delayMicroseconds(20);
+
+    return (int) bcm2835_gpio_lev(JOYSTK_COMP);
+}
+#endif  /* end of not RPI_BARE_METAL */
+
+/*------------------------------------------------
+ * rpi_rjoystk_button()
+ *
+ *  Read right joystick button GPIO input pin and return its value.
+ *
+ *  param:  None
+ *  return: GPIO joystick button input level
+ */
+int rpi_rjoystk_button(void)
+#if (RPI_BARE_METAL)
+{
+} /* end of RPI_BARE_METAL */
+#else
+{
+    return (int) bcm2835_gpio_lev(JOYSTK_BUTTON);
+}
+#endif  /* end of not RPI_BARE_METAL */
+
+/*------------------------------------------------
+ * rpi_audio_mux_set()
+ *
+ *  Set GPIO to select analog multiplexer output.
+ *
+ *  param:  Multiplexer select bit field: b.2=PIA1-CB2, b1=PIA0-CB2, b.0=PIA0-CA2
+ *  return: None
+ */
+void rpi_audio_mux_set(int select)
+#if (RPI_BARE_METAL)
+{
+} /* end of RPI_BARE_METAL */
+#else
+{
+    static int previous_select = 0;
+
+    if ( select != previous_select )
+    {
+        bcm2835_gpio_write_mask((uint32_t)select << AUDIO_MUX0, (uint32_t) AUDIO_MUX_MASK);
+        bcm2835_delayMicroseconds(20);  // TODO check is this is needed to reduce value noise
+        previous_select = select;
+    }
+}
+#endif  /* end of not RPI_BARE_METAL */
+
+/*------------------------------------------------
  * rpi_write_dac()
  *
  *  Write 6-bit value to DAC
@@ -269,7 +367,7 @@ void rpi_write_dac(int dac_value)
 
     /* Arrange GPIO bit pin outputs
      */
-    dac_bit_values = (~dac_value) << 22;
+    dac_bit_values = dac_value << DAC_BIT0;
 
 #if (RPI_MODEL_B)
     if ( dac_bit_values & 0x04000000 )

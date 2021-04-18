@@ -26,7 +26,13 @@
 #define     PIA0_CRB            0xff03
 
 #define     PIA1_PA             0xff20
+#define     PIA1_CRA            0xff21
 #define     PIA1_PB             0xff22
+#define     PIA1_CRB            0xff23
+
+#define     PIACR_CAB2_MASK     0X38
+#define     PIACR_CAB2_SET      0x38
+#define     PIACR_CABS_CLR      0x30
 
 #define     KBD_ROWS            7
 
@@ -35,20 +41,33 @@
 #define     PIA_CR_INTR         0x01    // CA1/CB1 interrupt enable bit
 #define     PIA_CR_IRQ_STAT     0x80    // IRQA1/IRQB1 status bit
 
+#define     AUDIO_MUX_DAC       0
+#define     AUDIO_MUX_OTHER     1
+#define     AUDIO_MUX_JSTKX     2
+#define     AUDIO_MUX_JSTKY     3
+
 /* -----------------------------------------
    Module static functions
 ----------------------------------------- */
+static uint8_t io_handler_pia0_pa(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_t op);
+static uint8_t io_handler_pia0_cra(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia0_crb(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia1_pa(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia1_pb(uint16_t address, uint8_t data, mem_operation_t op);
-static uint8_t get_keyboard_column_scan(uint8_t data);
+static uint8_t io_handler_pia1_crb(uint16_t address, uint8_t data, mem_operation_t op);
+
+static uint8_t get_keyboard_row_scan(uint8_t data);
 
 /* -----------------------------------------
    Module globals
 ----------------------------------------- */
 int     pia0_cb1_int_enabled = 0;
+uint8_t pia0_cra = 0;
 uint8_t pia0_crb = 0;
+uint8_t pia1_crb = 0;
+
+uint8_t audio_mux_select = AUDIO_MUX_DAC;
 
 /*
     Dragon keyboard map
@@ -176,13 +195,15 @@ void pia_init(void)
 {
     /* Link IO call-backs
      */
-    mem_write(PIA0_PA, 0xff);
+    mem_write(PIA0_PA, 0x7f);
+    mem_define_io(PIA0_PA, PIA0_PA, io_handler_pia0_pa);    // Joystick comparator, keyboard row input
     mem_define_io(PIA0_PB, PIA0_PB, io_handler_pia0_pb);    // Keyboard column output
-    mem_define_io(PIA0_CRB, PIA0_CRB, io_handler_pia0_crb); // Keyboard column output
+    mem_define_io(PIA0_CRA, PIA0_CRA, io_handler_pia0_cra); // Audio multiplexer select bit.0
+    mem_define_io(PIA0_CRB, PIA0_CRB, io_handler_pia0_crb); // Field sync interrupt
 
     mem_define_io(PIA1_PA, PIA1_PA, io_handler_pia1_pa);    // 6-bit DAC output
-
     mem_define_io(PIA1_PB, PIA1_PB, io_handler_pia1_pb);    // VDG mode bits output
+    mem_define_io(PIA1_CRB, PIA1_CRB, io_handler_pia1_crb); // Audio multiplexer select bit.1
 }
 
 /*------------------------------------------------
@@ -213,6 +234,46 @@ void pia_vsync_irq(void)
         pia0_crb |= PIA_CR_IRQ_STAT;
         cpu_irq(1);
     }
+}
+
+/*------------------------------------------------
+ * io_handler_pia0_pa()
+ *
+ *  IO call-back handler 0xFF00 PIA0-A Data read:
+ *
+ *  Bit 0..6 keyboard row input
+ *  Bit 0    Right joystick button input
+ *  Bit 1    Left joystick button input ** not implemented **
+ *  Bit 7    Joystick comparator input
+ *
+ *  This call-back will only deal with joystick comparator input read.
+ *  Keyboard row inputs are handled by io_handler_pia0_pb()
+ *
+ *  param:  Call address, data byte for write operation, and operation type
+ *  return: Status or data byte
+ */
+static uint8_t io_handler_pia0_pa(uint16_t address, uint8_t data, mem_operation_t op)
+{
+    if ( op == MEM_READ )
+    {
+        /* Check joystick comparator and button GPIO and set bits
+         */
+        if ( rpi_joystk_comp() )
+            data |= 0x80;
+        else
+            data &= 0x7f;
+
+        /* Do not force a '1' if joystick button is not pressed
+         * this will interfere with keyboard scan.
+         */
+        if ( rpi_rjoystk_button() == 0 )
+            data &= 0xfe;
+
+        /* Keyboard row scan inputs are set by 'io_handler_pia0_pb()'
+         */
+    }
+
+    return data;
 }
 
 /*------------------------------------------------
@@ -273,12 +334,18 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
 
         /* DEBUG
          */
-        //printf("data 0x%02x get_keyboard_column_scan() 0x%02x\n", data, get_keyboard_column_scan(data));
+        //printf("data 0x%02x get_keyboard_row_scan() 0x%02x\n", data, get_keyboard_column_scan(data));
 
         /* Store the appropriate row bit value
-         * for PIA0_PA bit pattern
+         * for PIA0_PA bit pattern after merging with comparator input
          */
-        mem_write(PIA0_PA, (int) get_keyboard_column_scan(data));
+        row_switch_bits = get_keyboard_row_scan(data);
+        if ( rpi_joystk_comp() )
+            row_switch_bits |= 0x80;
+        else
+            row_switch_bits &= 0x7f;
+
+        mem_write(PIA0_PA, (int) row_switch_bits);
     }
 
     /* A read to the port address has the effect of resetting
@@ -294,9 +361,36 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
 }
 
 /*------------------------------------------------
+ * io_handler_pia0_cra()
+ *
+ *  IO call-back handler 0xFF03 PIA0-A Control register
+ *  responding the audio multiplexer select bits
+ *
+ *  param:  Call address, data byte for write operation, and operation type
+ *  return: Status or data byte
+ */
+static uint8_t io_handler_pia0_cra(uint16_t address, uint8_t data, mem_operation_t op)
+{
+    if ( op == MEM_WRITE )
+    {
+        pia0_cra = data;
+
+        if ( (pia0_cra & PIACR_CAB2_MASK) == PIACR_CAB2_SET )
+            audio_mux_select |= 0x01;
+        else
+            audio_mux_select &= 0xfe;
+
+        rpi_audio_mux_set((int) audio_mux_select);
+    }
+
+    return pia0_cra;
+}
+
+/*------------------------------------------------
  * io_handler_pia0_crb()
  *
  *  IO call-back handler 0xFF03 PIA0-B Control register
+ *  to enabled/disable IRQ interrupt source.
  *
  *  param:  Call address, data byte for write operation, and operation type
  *  return: Status or data byte
@@ -362,15 +456,41 @@ static uint8_t io_handler_pia1_pb(uint16_t address, uint8_t data, mem_operation_
 }
 
 /*------------------------------------------------
- * get_keyboard_column_scan()
+ * io_handler_pia1_crb()
+ *
+ *  IO call-back handler 0xFF23 PIA0-B Control register
+ *  responding the audio multiplexer select bits
+ *
+ *  param:  Call address, data byte for write operation, and operation type
+ *  return: Status or data byte
+ */
+static uint8_t io_handler_pia1_crb(uint16_t address, uint8_t data, mem_operation_t op)
+{
+    if ( op == MEM_WRITE )
+    {
+        pia1_crb = data;
+
+        if ( (pia1_crb & PIACR_CAB2_MASK) == PIACR_CAB2_SET )
+            audio_mux_select |= 0x02;
+        else
+            audio_mux_select &= 0xfd;
+
+        rpi_audio_mux_set((int) audio_mux_select);
+    }
+
+    return pia1_crb;
+}
+
+/*------------------------------------------------
+ * get_keyboard_row_scan()
  *
  *  Using the Row scan bit pattern and the key closure
- *  matrix in '', generate the column scan bit pattern
+ *  matrix in 'keyboard_rows', generate the row scan bit pattern
  *
  *  param:  Row scan bit pattern
  *  return: Column scan bit pattern
  */
-static uint8_t get_keyboard_column_scan(uint8_t row_scan)
+static uint8_t get_keyboard_row_scan(uint8_t row_scan)
 {
     uint8_t result = 0;
     uint8_t bit_position = 0x01;
