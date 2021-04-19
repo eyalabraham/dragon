@@ -47,6 +47,8 @@ void     rpi_keyboard_reset(void);
 int      rpi_joystk_comp(void);
 int      rpi_rjoystk_button(void);
 
+int      rpi_reset_button(void);
+
 void     rpi_audio_mux_set(int);
 
 void     rpi_write_dac(int);

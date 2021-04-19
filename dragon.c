@@ -92,7 +92,9 @@ int main(int argc, char *argv[])
     {
         cpu_run();
 
-        if ( cpu_get_state(&cpu_state) == CPU_RESET )
+        if ( rpi_reset_button() == 0 )  // Active low reset
+            cpu_reset(1);
+        else
             cpu_reset(0);
 
         vdg_render();

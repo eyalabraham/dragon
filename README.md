@@ -57,8 +57,11 @@ To be added
 
 This repository contains all the intermediate implementation steps and tags them for easy retrieval. Each step builds on the functionality of its predecessors and maintains backward compatibility. The latest release is listed first:
 
-- (next up) Refactoring and preparation for bare-metal version and bug fixes.
-- Release tag 0.9 Joystick support and a change to RPi Zero.
+- (next up) CPU execution clock "pacing"
+- (next up) Release tag 1.0 RPi Zero bare-metal version
+- (next up) Refactoring and preparation for bare-metal, and bug fixes.
+- (next up) Emulator reset button.
+- [Release tag 0.9](https://github.com/eyalabraham/dragon/releases/tag/v0.9) Joystick support and a change to RPi Zero.
 - [Release tag 0.8](https://github.com/eyalabraham/dragon/releases/tag/v0.8) Dragon 32 computer emulation with sound.
 - [Release tag 0.7](https://github.com/eyalabraham/dragon/releases/tag/v0.7) Dragon 32 computer emulation with video and semi-graphics modes.
 - [Release tag 0.6](https://github.com/eyalabraham/dragon/releases/tag/v0.6) Minimal Dragon 32 computer emulation with text mode and keyboard.
@@ -150,6 +153,7 @@ The code in the call-backs redirect the IO request to the appropriate Raspberry 
 | Analog multiplexer select-0 | GPIO-02     | GPIO-02          |
 | Analog multiplexer select-1 | GPIO-03     | GPIO-03          |
 | RPi timing test point       | GPIO-04     | GPIO-04          |
+| Emulator reset              | na          | GPIO-05          |
 | Analog comparator input     | GPIO-07     | GPIO-07          |
 | Right joystick "fire"       | GPIO-08     | GPIO-08          |
 | AVR ATtiny85 keyboard MISO  | GPIO-09     | GPIO-09          |

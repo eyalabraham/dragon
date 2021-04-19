@@ -26,6 +26,8 @@
 #define     AVR_RESET           RPI_V2_GPIO_P1_11
 #define     PRI_TEST_POINT      RPI_V2_GPIO_P1_07
 
+#define     EMULATOR_RESET      RPI_V2_GPIO_P1_29
+
 #define     AUDIO_MUX0          RPI_V2_GPIO_P1_03
 #define     AUDIO_MUX1          RPI_V2_GPIO_P1_05
 #define     AUDIO_MUX_MASK      ((1 << AUDIO_MUX0) | (1 << AUDIO_MUX1))
@@ -102,7 +104,8 @@ int rpi_gpio_init(void)
     bcm2835_gpio_fsel(PRI_TEST_POINT, BCM2835_GPIO_FSEL_OUTP);
     bcm2835_gpio_write(PRI_TEST_POINT, LOW);
 
-    /* Initialize 6-bit DAC and joystick comparator GPIO lines
+    /* Initialize 6-bit DAC, joystick comparator,
+     * audio multiplexer control, and emulator reset GPIO lines
      */
     bcm2835_gpio_fsel(DAC_BIT0, BCM2835_GPIO_FSEL_OUTP);
     bcm2835_gpio_fsel(DAC_BIT1, BCM2835_GPIO_FSEL_OUTP);
@@ -122,6 +125,11 @@ int rpi_gpio_init(void)
     bcm2835_gpio_fsel(AUDIO_MUX0, BCM2835_GPIO_FSEL_OUTP);
     bcm2835_gpio_fsel(AUDIO_MUX1, BCM2835_GPIO_FSEL_OUTP);
     bcm2835_gpio_clr_multi((1 << AUDIO_MUX0) | (1 << AUDIO_MUX1));
+
+#if (RPI_MODEL_ZERO)
+    bcm2835_gpio_fsel(EMULATOR_RESET, BCM2835_GPIO_FSEL_INPT);
+    bcm2835_gpio_set_pud(EMULATOR_RESET, BCM2835_GPIO_PUD_UP);
+#endif
 
     /* Initialize SPI
      */
@@ -321,6 +329,28 @@ int rpi_rjoystk_button(void)
 #else
 {
     return (int) bcm2835_gpio_lev(JOYSTK_BUTTON);
+}
+#endif  /* end of not RPI_BARE_METAL */
+
+/*------------------------------------------------
+ * rpi_reset_button()
+ *
+ *  Emulator reset button GPIO input pin and return its value.
+ *
+ *  param:  None
+ *  return: GPIO reset button input level
+ */
+int rpi_reset_button(void)
+#if (RPI_BARE_METAL)
+{
+} /* end of RPI_BARE_METAL */
+#else
+{
+#if (RPI_MODEL_ZERO)
+    return (int) bcm2835_gpio_lev(EMULATOR_RESET);
+#else
+    return 1;
+#endif
 }
 #endif  /* end of not RPI_BARE_METAL */
 
