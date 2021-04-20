@@ -7,8 +7,6 @@
  *
  *******************************************************************/
 
-//#include    <stdio.h>
-
 #include    <stdint.h>
 
 #include    "cpu.h"
@@ -314,7 +312,7 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
                 /* Sanity check
                  */
                 if ( (row_index = scan_code_table[(scan_code & 0x7f)][1]) == 255 )
-                    emu_assert(0 && "Illegal scan code io_handler_pia0_pb()");
+                    rpi_halt("Illegal scan code io_handler_pia0_pb()");
 
                 /* Generate row bit patterns emulating row key closures
                  * and match to 'make' or 'break' codes (bit.7 or scan code)

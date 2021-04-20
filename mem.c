@@ -7,9 +7,7 @@
  *
  *******************************************************************/
 
-#include    "config.h"
 #include    "mem.h"
-#include    "rpi.h"
 
 /* -----------------------------------------
    Local definitions
@@ -133,14 +131,10 @@ int  mem_define_rom(int addr_start, int addr_end)
          addr_start > addr_end )
         return MEM_ADD_RANGE;
 
-    disable();
-
     for (i = addr_start; i <= addr_end; i++)
     {
         memory[i].memory_type = MEM_TYPE_ROM;
     }
-
-    enable();
 
     return MEM_OK;
 }
@@ -166,16 +160,12 @@ int  mem_define_io(int addr_start, int addr_end, io_handler_callback io_handler)
          addr_start > addr_end )
         return MEM_ADD_RANGE;
 
-    disable();
-
     for (i = addr_start; i <= addr_end; i++)
     {
         memory[i].memory_type = MEM_TYPE_IO;
         if ( io_handler != 0L )
             memory[i].io_handler = io_handler;
     }
-
-    enable();
 
     return MEM_OK;
 }
@@ -199,14 +189,10 @@ int mem_load(int addr_start, int *buffer, int length)
          (addr_start + length) > MEMORY )
         return MEM_ADD_RANGE;
 
-    disable();
-
     for (i = 0; i < length; i++)
     {
         memory[(i+addr_start)].data_byte = (uint8_t)buffer[i];
     }
-
-    enable();
 
     return MEM_OK;
 }

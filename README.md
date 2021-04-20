@@ -59,7 +59,7 @@ This repository contains all the intermediate implementation steps and tags them
 
 - (next up) CPU execution clock "pacing"
 - (next up) Release tag 1.0 RPi Zero bare-metal version
-- (next up) Refactoring and preparation for bare-metal, and bug fixes.
+- (next up) Refactoring, preparation for bare-metal, and bug fixes.
 - (next up) Emulator reset button.
 - [Release tag 0.9](https://github.com/eyalabraham/dragon/releases/tag/v0.9) Joystick support and a change to RPi Zero.
 - [Release tag 0.8](https://github.com/eyalabraham/dragon/releases/tag/v0.8) Dragon 32 computer emulation with sound.
@@ -223,7 +223,7 @@ In the Dragon computer the audio multiplexer is controlled by PIA0-CA2 and CB2, 
 
 ##### Joystick
 
-The external hardware provides connectivity for the right joystick. The emulation software supports only one joystick. The external hardware is built with an analog multiplexer (CD4052) that routes the joystick output voltages to a comparator. The comparator works in conjunction with the DAC and the Dragon software to convert the analog joystick position to a number range between 0 and 63. The analog multiplexer is controlled by GPIO pins that represent PIA0 and PIA1 control lines as outlined below:
+The external hardware provides connectivity for the right joystick. The emulation software supports only one joystick. The external hardware is built with an analog multiplexer (CD4052) that routes the joystick output voltages to a comparator. The comparator works in conjunction with the DAC and the Dragon software to convert the analog joystick position to a number range between 0 and 63. The analog multiplexer is controlled by GPIO pins that represent PIA0-CA2 and PIA1-CB2 control lines, using low order select bit and the inhibit line instead of the high order select bit.
 
 ##### Field Sync IRQ
 
@@ -244,4 +244,33 @@ In the Dragon computer, the system generates an IRQ interrupt at the frame synch
   - Exception generation, example: writing to a memory location that is defines as ROM.
 - Dragon sound sources: single-bit
 
+## Files
+
+- **dragon.c** main module for Dragon Computer emulation.
+- Emulation
+  - **cpu.c** 6809E emulation.
+  - **mem.c** memory emulation module.
+  - **sam.c** SAM emulation call-back functions.
+  - **vdg.c** VDG emulation.
+  - **pia.c** PIA emulation call-back functions.
+  - **rpi.c** Raspberry Pi hardware specific functions.
+- Emulated computers
+  - **basic09.c**  emulation of [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html).
+  - **emu09.c** general module for loading and executing 6809E machine language test code.
+  - **intr09.c** general module for loading and executing 6809E interrupt tests.
+  - **mon09.c** emulation of [SBUG-E 6809 Monitor](https://deramp.com/swtpc.com/MP_09/SBUG_Index.htm) program.
+  - **profile.c** general module for loading and executing 6809E timing profile tests.
+- Utilities
+  - **trace.c** CPU trace utility functions.
+  - **uart.c** RPi UART utility module.
+  - **spi.c** SPI test program.
+  - **i2c.c** I2C test program.
+- RPi bare-metal code modules
+  - **printf.c** printf() replacement for bare-metal.
+- Miscellaneous
+  - **README.md** this file.
+  - **LICENSE.md** license.
+  - **Makefile** make file.
+  - **include/** include files.
+  - **scripts/** helper scripts.
 

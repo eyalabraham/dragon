@@ -1,23 +1,28 @@
 /********************************************************************
  * rpi.c
  *
- *  Function stubs and definitions for RPi machine-defendant functionality
+ *  Functions and definitions for RPi machine-dependent functionality
  *  and implementation for OS or bare-metal option.
  *
  *  January 8, 2021
  *
  *******************************************************************/
 
-#include    <stdio.h>
+#if (RPI_BARE_METAL==0)
+    #include    <stdio.h>
+    #include    <time.h>
+    #include    <assert.h>
+    #include    <fcntl.h>
+    #include    <linux/fb.h>
+    #include    <linux/kd.h>
+    #include    <sys/mman.h>
+    #include    <sys/ioctl.h>
+#endif
+
 #include    <unistd.h>
-#include    <time.h>
-#include    <fcntl.h>
-#include    <linux/fb.h>
-#include    <linux/kd.h>
-#include    <sys/mman.h>
-#include    <sys/ioctl.h>
 
 #include    "bcm2835.h"
+#include    "printf.h"
 #include    "rpi.h"
 
 /* -----------------------------------------
@@ -36,10 +41,10 @@
 #define     DAC_BIT1            RPI_V2_GPIO_P1_16
 #define     DAC_BIT2            RPI_V2_GPIO_P1_18
 #define     DAC_BIT3            RPI_V2_GPIO_P1_22
-#if (RPI_MODEL_B)
-#define     DAC_BIT4            RPI_V2_GPIO_P1_12
-#else
+#if (RPI_MODEL_ZERO==1)
 #define     DAC_BIT4            RPI_V2_GPIO_P1_37
+#else
+#define     DAC_BIT4            RPI_V2_GPIO_P1_12
 #endif
 #define     DAC_BIT5            RPI_V2_GPIO_P1_13
 
@@ -75,7 +80,7 @@ static int      fbfd = 0;                        // frame buffer file descriptor
 int rpi_gpio_init(void)
 #if (RPI_BARE_METAL)
 {
-    return 0L;
+    return 0;
 } /* end of RPI_BARE_METAL */
 #else
 {
@@ -126,7 +131,7 @@ int rpi_gpio_init(void)
     bcm2835_gpio_fsel(AUDIO_MUX1, BCM2835_GPIO_FSEL_OUTP);
     bcm2835_gpio_clr_multi((1 << AUDIO_MUX0) | (1 << AUDIO_MUX1));
 
-#if (RPI_MODEL_ZERO)
+#if (RPI_MODEL_ZERO==1)
     bcm2835_gpio_fsel(EMULATOR_RESET, BCM2835_GPIO_FSEL_INPT);
     bcm2835_gpio_set_pud(EMULATOR_RESET, BCM2835_GPIO_PUD_UP);
 #endif
@@ -291,6 +296,7 @@ void rpi_keyboard_reset(void)
 int rpi_joystk_comp(void)
 #if (RPI_BARE_METAL)
 {
+    return 0;
 } /* end of RPI_BARE_METAL */
 #else
 {
@@ -325,6 +331,7 @@ int rpi_joystk_comp(void)
 int rpi_rjoystk_button(void)
 #if (RPI_BARE_METAL)
 {
+    return 1;
 } /* end of RPI_BARE_METAL */
 #else
 {
@@ -343,10 +350,11 @@ int rpi_rjoystk_button(void)
 int rpi_reset_button(void)
 #if (RPI_BARE_METAL)
 {
+    return 1;
 } /* end of RPI_BARE_METAL */
 #else
 {
-#if (RPI_MODEL_ZERO)
+#if (RPI_MODEL_ZERO==1)
     return (int) bcm2835_gpio_lev(EMULATOR_RESET);
 #else
     return 1;
@@ -399,7 +407,7 @@ void rpi_write_dac(int dac_value)
      */
     dac_bit_values = dac_value << DAC_BIT0;
 
-#if (RPI_MODEL_B)
+#if (RPI_MODEL_ZERO==0)
     if ( dac_bit_values & 0x04000000 )
         dac_bit_values |= (1 << DAC_BIT4);
 #endif
@@ -461,22 +469,50 @@ void rpi_testpoint_off(void)
     bcm2835_gpio_write(PRI_TEST_POINT, LOW);
 }
 
-/*------------------------------------------------
- * rpi_assert_handler()
+/********************************************************************
+ * rpi_halt()
  *
- *  Assert handler for RPi bare metal mode.
- *  Functionality is same as assert() macro.
+ *  Output message and halt
  *
- *  param:  Assert expression to evaluate
+ *  param:  Message
  *  return: None
  */
-void rpi_assert_handler(int assert_exp)
+void rpi_halt(char *msg)
+#if (RPI_BARE_METAL)
 {
-    if ( assert_exp )
+    printf("%s\nHalting\n", msg);
+    for (;;)
     {
-        // TODO implement assert behavior
+        /* Halt in endless loop */
     }
+} /* end of RPI_BARE_METAL */
+#else
+{
+    printf("%s\n", msg);
+    assert(0);
 }
+#endif  /* end of not RPI_BARE_METAL */
+
+/*------------------------------------------------
+ * _putchar()
+ *
+ *  Low level character output/stream for printf()
+ *
+ *  param:  character
+ *  return: none
+ */
+void _putchar(char character)
+#if (RPI_BARE_METAL)
+{
+    if ( character == '\n')
+        bcm2835_auxuart_putchr('\r');
+    bcm2835_auxuart_putchr(character);
+}
+#else
+{
+    putchar(character);
+}
+#endif  /* end of not RPI_BARE_METAL */
 
 /********************************************************************
  * fb_set_resolution()
@@ -490,7 +526,7 @@ void rpi_assert_handler(int assert_exp)
 static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
 #if (RPI_BARE_METAL)
 {
-    return -1;
+    return 0;
 } /* end of RPI_BARE_METAL */
 #else
 {

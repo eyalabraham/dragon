@@ -12,10 +12,8 @@
 
 #include    <stdio.h>
 
-#include    "config.h"
 #include    "mem.h"
 #include    "cpu.h"
-#include    "rpi.h"
 #include    "uart.h"
 
 /* -----------------------------------------

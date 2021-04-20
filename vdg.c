@@ -10,7 +10,6 @@
  *  February 6, 2021
  *
  *******************************************************************/
-//#include    <stdio.h>
 
 #include    <stdint.h>
 
@@ -150,7 +149,7 @@ void vdg_init(void)
     fbp = rpi_fb_init(SCREEN_WIDTH_PIX, SCREEN_HEIGHT_PIX);
     if ( fbp == 0L )
     {
-        emu_assert(0 && "Frame buffer error vdg_init()");
+        rpi_halt("Frame buffer error vdg_init()");
     }
 
     /* Default startup mode of Dragon 32
@@ -204,7 +203,7 @@ void vdg_render(void)
         fbp = rpi_fb_resolution(resolution[current_mode][RES_HORZ_PIX], resolution[current_mode][RES_VERT_PIX]);
         if ( fbp == 0L )
         {
-            emu_assert(0 && "Frame buffer error vdg_render()");
+            rpi_halt("Frame buffer error vdg_render()");
         }
 
         prev_mode = current_mode;
@@ -313,11 +312,11 @@ void vdg_render(void)
         case SEMI_GRAPHICS_24:
         case ALPHA_EXTERNAL:
         case DMA:
-            emu_assert(0 && "Mode not supported vdg_render()");
+            rpi_halt("Mode not supported vdg_render()");
             break;
 
         default:
-            emu_assert(0 && "Illegal mode vdg_render()");
+            rpi_halt("Illegal mode vdg_render()");
     }
 
     //rpi_testpoint_off();
@@ -674,7 +673,7 @@ static video_mode_t vdg_get_mode(void)
     }
     else
     {
-        emu_assert(0 && "Cannot resolve mode vdg_get_mode()");
+        rpi_halt("Cannot resolve mode vdg_get_mode()");
     }
 
     return mode;

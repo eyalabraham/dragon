@@ -11,10 +11,8 @@
 #include    <stdio.h>
 #include    <time.h>
 
-#include    "config.h"
 #include    "mem.h"
 #include    "cpu.h"
-#include    "rpi.h"
 #include    "trace.h"
 #include    "bcm2835.h"
 
@@ -82,10 +80,12 @@ int main(int argc, char *argv[])
     {
         cpu_run();
 
+        cpu_get_state(&cpu_state);
+
         //trace_print_registers(&cpu_state);
 
         //trace_action();
-   }
+    }
     while ( cpu_state.pc != break_point );
 
     printf("Stopped at breakpoint.\n");

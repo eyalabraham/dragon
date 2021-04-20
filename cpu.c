@@ -15,14 +15,11 @@
  *
  *******************************************************************/
 
-//#include    <stdio.h> // Temporary for occasional printf() debug
 #include    <string.h>
 
-#include    "config.h"
 #include    "mc6809e.h"
 #include    "mem.h"
 #include    "cpu.h"
-#include    "rpi.h"
 
 /* -----------------------------------------
    Local definitions
@@ -188,6 +185,7 @@ int cpu_init(int address)
     cpu.firq_asserted = 0;
     cpu.int_latch = 0;
     cpu.cpu_state = CPU_HALTED;
+    cpu.exception_line_num = -1;
 
     /* Check start address and update PC
      */
@@ -571,10 +569,10 @@ cpu_run_state_t cpu_run(void)
                     break;
 
                 default:
-                    /* Exception
+                    /* Exception: Illegal 0x10 op-code cpu_run()
                      */
-                    emu_assert(0 && "Illegal 0x10 op-code cpu_run()");
                     cpu.cpu_state = CPU_EXCEPTION;
+                    cpu.exception_line_num = __LINE__;
             }
         }
         /* Double-byte 0x11 prefix
@@ -633,10 +631,10 @@ cpu_run_state_t cpu_run(void)
                     break;
 
                 default:
-                    /* Exception
+                    /* Exception: Illegal 0x11 op-code cpu_run()
                      */
-                    emu_assert(0 && "Illegal 0x11 op-code cpu_run()");
                     cpu.cpu_state = CPU_EXCEPTION;
+                    cpu.exception_line_num = __LINE__;
             }
         }
         /* Common op-code processing
@@ -1392,10 +1390,10 @@ cpu_run_state_t cpu_run(void)
                     break;
 
                 default:
-                    /* Exception
+                    /* Exception: Illegal op-code cpu_run()
                      */
-                    emu_assert(0 && "Illegal op-code cpu_run()");
                     cpu.cpu_state = CPU_EXCEPTION;
+                    cpu.exception_line_num = __LINE__;
             }
         }
 
@@ -2520,9 +2518,10 @@ static void swi(int swi_id)
             break;
 
         default:
-            /* Exception
+            /* Exception: Illegal SWI type swi()
              */
-            emu_assert(0 && "Illegal SWI type swi()");
+            cpu.cpu_state = CPU_EXCEPTION;
+            cpu.exception_line_num = __LINE__;
     }
 }
 
@@ -2582,8 +2581,6 @@ static void branch(int instruction, int long_short, uint16_t effective_address, 
     /* Parse the branch condition and apply
        offset if branch is taken.
      */
-    emu_assert((long_short == 0 || long_short == 1) && "Illegal long_short branch()");
-
     switch ( instruction )
     {
         /* BHI / LBHI
@@ -2684,11 +2681,14 @@ static void branch(int instruction, int long_short, uint16_t effective_address, 
                 do_branch(long_short, effective_address, cycles);
             break;
 
-        /* There should be no exception here because this function is always
+        /* Exception: Illegal branch code branch()
+         *
+         * There should be no exception here because this function is always
          * called from within a switch/case for a valid opcode range.
          */
         default:
-            emu_assert(0 && "Illegal branch code branch()");
+            cpu.cpu_state = CPU_EXCEPTION;
+            cpu.exception_line_num = __LINE__;
     }
 }
 
@@ -2865,9 +2865,10 @@ static int get_eff_addr(int op_code, int *cycles, int *bytes)
                         break;
 
                     default:
-                        /* Exception
+                        /* Exception: Illegal indexing mode get_eff_addr()
                          */
-                        emu_assert(0 && "Illegal indexing mode get_eff_addr()");
+                        cpu.cpu_state = CPU_EXCEPTION;
+                        cpu.exception_line_num = __LINE__;
                 }
 
                 /* Resolve indirect addresses
@@ -2912,9 +2913,10 @@ static int get_eff_addr(int op_code, int *cycles, int *bytes)
             break;
 
         default:
-            /* Exception
+            /* Exception: Illegal address mode get_eff_addr()
              */
-            emu_assert(0 && "Illegal address mode get_eff_addr()");
+            cpu.cpu_state = CPU_EXCEPTION;
+            cpu.exception_line_num = __LINE__;
     }
 
     return effective_addr;
@@ -2977,9 +2979,10 @@ static uint16_t read_register(int reg)
 
         default:
             temp = 0;
-            /* Exception
+            /* Exception: Illegal register read_register()
              */
-            emu_assert(0 && "Illegal register read_register()");
+            cpu.cpu_state = CPU_EXCEPTION;
+            cpu.exception_line_num = __LINE__;
     }
 
     return temp;
@@ -3041,9 +3044,10 @@ static void write_register(int reg, uint16_t data)
             break;
 
         default:
-            /* Exception
+            /* Exception: Illegal register write_register()
              */
-            emu_assert(0 && "Illegal register write_register()");
+            cpu.cpu_state = CPU_EXCEPTION;
+            cpu.exception_line_num = __LINE__;
     }
 }
 

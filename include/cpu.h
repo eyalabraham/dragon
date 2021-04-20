@@ -58,6 +58,7 @@ typedef struct
     int     reset_asserted;
     int     irq_asserted;
     int     firq_asserted;
+    int     exception_line_num;
 } cpu_state_t;
 
 /********************************************************************

@@ -8,13 +8,11 @@
  *
  *******************************************************************/
 
-#include    <stdio.h>
+#include    "printf.h"
 
-#include    "config.h"
 #include    "mem.h"
 #include    "cpu.h"
 #include    "rpi.h"
-#include    "trace.h"
 
 #include    "sam.h"
 #include    "vdg.h"
@@ -40,11 +38,13 @@
  * main()
  *
  */
-int main(int argc, char *argv[])
+#if (RPI_BARE_METAL==1)
+    void kernel(uint32_t r0, uint32_t machid, uint32_t atags)
+#else
+    int main(int argc, char *argv[])
+#endif
 {
     int             i;
-    uint16_t        break_point = 0xffff;
-    cpu_state_t     cpu_state;
 
     /* ROM code load
      */
@@ -57,6 +57,9 @@ int main(int argc, char *argv[])
     }
     printf("Loaded %i bytes.\n", i - 1);
 
+    /* Cartridge ROM load as demo for a game
+     * TODO remove when loader/manager from SD card is available.
+     */
     printf("Loading cartridge... ");
     i = 0;
     while ( cartridge[i] != -1 )
@@ -71,7 +74,7 @@ int main(int argc, char *argv[])
     /* Emulation initialization
      */
     if ( rpi_gpio_init() == -1 )
-        return 1;
+        rpi_halt("Failed to initialize GPIO rpi_gpio_init()");;
 
     sam_init();
     pia_init();
@@ -80,15 +83,12 @@ int main(int argc, char *argv[])
     printf("Initializing CPU.\n");
     cpu_init(RUN_ADDRESS);
 
-    //break_point = 0xbbe5;
-
-    /* Execution loop.
-     * Run until breakpoint, and single step from there.
+    /* CPU endless execution loop.
      */
     printf("Starting CPU.\n");
     cpu_reset(1);
 
-    do
+    for (;;)
     {
         cpu_run();
 
@@ -101,19 +101,8 @@ int main(int argc, char *argv[])
 
         pia_vsync_irq();
     }
-    while ( cpu_state.pc != break_point );
 
-    printf("Stopped at breakpoint.\n");
-
-    while ( 1 )
-    {
-        cpu_get_state(&cpu_state);
-        trace_print_registers(&cpu_state);
-
-        trace_action();
-
-        cpu_run();
-    }
-
+#if (RPI_BARE_METAL==0)
     return 0;
+#endif
 }
