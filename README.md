@@ -46,12 +46,13 @@ ASCII art depiction of the system for the RPi bare metal implementation:
            | Monitor  |      |  PS2 Keyboard |  External HW
            +----------+      |  Joystick     |    |
                              |  Audio DAC    |    |
+                             |  SD card      |    |
                              +---------------+    |
 ```
 
 ## Schematics
 
-To be added
+Schematics of external emulator hardware (KiCAD drawing)[https://github.com/eyalabraham/schematics/tree/master/dragon].
 
 ## Implementation
 
@@ -59,8 +60,8 @@ This repository contains all the intermediate implementation steps and tags them
 
 - (next up) CPU execution clock "pacing"
 - (next up) Release tag 1.0 RPi Zero bare-metal version
-- (next up) Refactoring, preparation for bare-metal, and bug fixes.
-- (next up) Emulator reset button.
+- (next up) CAS file loader/manager from SD card
+- Release tag 0.10 ROM image file loader/manager from SD card. Emulator reset button, refactoring, preparation for bare-metal, and bug fixes.
 - [Release tag 0.9](https://github.com/eyalabraham/dragon/releases/tag/v0.9) Joystick support and a change to RPi Zero.
 - [Release tag 0.8](https://github.com/eyalabraham/dragon/releases/tag/v0.8) Dragon 32 computer emulation with sound.
 - [Release tag 0.7](https://github.com/eyalabraham/dragon/releases/tag/v0.7) Dragon 32 computer emulation with video and semi-graphics modes.
@@ -161,7 +162,11 @@ The code in the call-backs redirect the IO request to the appropriate Raspberry 
 | AVR ATtiny85 keyboard SCLK  | GPIO-11     | GPIO-11          |
 | Serial TxD (future)         | GPIO-14     | GPIO-14          |
 | Serial RxD (future)         | GPIO-15     | GPIO-15          |
+| AUX SPI1 CE2                | na          | GPIO-16          |
 | AVR ATtiny85 reset          | GPIO-17     | GPIO-17          |
+| AUX SPI1 MISO               | na          | GPIO-19          |
+| AUX SPI1 MOSI               | na          | GPIO-20          |
+| AUX SPI1 SCLK               | na          | GPIO-21          |
 | DAC bit.0                   | GPIO-22     | GPIO-22          |
 | DAC bit.1                   | GPIO-23     | GPIO-23          |
 | DAC bit.2                   | GPIO-24     | GPIO-24          |
@@ -229,16 +234,21 @@ The external hardware provides connectivity for the right joystick. The emulatio
 
 In the Dragon computer, the system generates an IRQ interrupt at the frame synchronization (FS) rate of 50 or 60Hz. The FS signal is routed through PIA0-CB1 (control register B-side) and generates an IRQ signal. Resetting the interrupt request by reading data register PIA0 B-side.
 
+### Software loader
+
+The software loader/manager interfaces with an SD card that holds Dragon 32 ROM cartridge images and CAS files. The loader/manager can be escaped into from the emulation, within it one can brows ROM and CAS files to load and run on the Dragon 32 emulator.
+
+This functionality is available only on RPi Zero/W and uses an SD card interface connected to the auxiliary SPI interface (SPI1).
+
 ### TODOs
 
 #### System
 
-- Cartridge interrupt for cartridge code auto start(?)
+- Cartridge interrupt for cartridge code auto start
 - Clock interrupts for CPU execution pacing
 
 #### Emulation extras
 
-- SD card setup and manager software for loading cartridge images and CAS files.
 - Serial console for monitoring execution state
 - Settable logging to serial console
   - Exception generation, example: writing to a memory location that is defines as ROM.
@@ -260,11 +270,13 @@ In the Dragon computer, the system generates an IRQ interrupt at the frame synch
   - **intr09.c** general module for loading and executing 6809E interrupt tests.
   - **mon09.c** emulation of [SBUG-E 6809 Monitor](https://deramp.com/swtpc.com/MP_09/SBUG_Index.htm) program.
   - **profile.c** general module for loading and executing 6809E timing profile tests.
-- Utilities
+- Utilities and drivers
   - **trace.c** CPU trace utility functions.
   - **uart.c** RPi UART utility module.
   - **spi.c** SPI test program.
   - **i2c.c** I2C test program.
+  - **loader.c** ROM and CAS file loader/manager.
+  - **sdfat32.c** SD card reader for FAT32 file system.
 - RPi bare-metal code modules
   - **printf.c** printf() replacement for bare-metal.
 - Miscellaneous

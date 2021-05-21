@@ -24,19 +24,19 @@ BINDIR = .
 CC = gcc
 
 #OPT = -Wall -L/usr/local/lib -lbcm2835 -I $(INCDIR)
-OPT = -Wall -DRPI_MODEL_ZERO=1 -DRPI_BARE_METAL=0 -I $(INCDIR)
+OPT = -Wall -DRPI_MODEL_ZERO=1 -I $(INCDIR)
 
 #------------------------------------------------------------------------------------
 # dependencies
 #------------------------------------------------------------------------------------
-DEPS = mem.h cpu.h mc6809e.h trace.h uart.h
+DEPS = mem.h cpu.h mc6809e.h rpi.h sam.h pia.h vdg.h printf.h trace.h uart.h sdfat32.h loader.h
 OBJEMU09 = emu09.o mem.o cpu.o
 OBJMON09 = mon09.o mem.o cpu.o uart.o
 OBJBAS09 = basic09.o mem.o cpu.o trace.o uart.o
 OBJINT09 = intr09.o mem.o cpu.o trace.o uart.o
 OBJPROF = profile.o mem.o cpu.o
 OBJSPI = spi.o
-OBJDRAGON = dragon.o mem.o cpu.o rpi.o sam.o pia.o vdg.o printf.o
+OBJDRAGON = dragon.o mem.o cpu.o rpi.o sam.o pia.o vdg.o printf.o sdfat32.o loader.o
 
 _DEPS = $(patsubst %,$(INCDIR)/%,$(DEPS))
 

@@ -1,25 +1,26 @@
 /********************************************************************
  * rpi.c
  *
- *  Functions and definitions for RPi machine-dependent functionality
- *  and implementation for OS or bare-metal option.
+ *  Functions and definitions for RPi machine-dependent functionality.
+ *  This is the Linux implementation (*not* bare-metal option.)
+ *  Some conditional compilation is included for RPi models with
+ *  different GPIO pins.
  *
  *  January 8, 2021
  *
  *******************************************************************/
 
-#if (RPI_BARE_METAL==0)
-    #include    <stdio.h>
-    #include    <time.h>
-    #include    <assert.h>
-    #include    <fcntl.h>
-    #include    <linux/fb.h>
-    #include    <linux/kd.h>
-    #include    <sys/mman.h>
-    #include    <sys/ioctl.h>
-#endif
+#include    <stdio.h>
+#include    <time.h>
+#include    <assert.h>
+#include    <fcntl.h>
+#include    <linux/fb.h>
+#include    <linux/kd.h>
+#include    <sys/mman.h>
+#include    <sys/ioctl.h>
 
 #include    <unistd.h>
+#include    <string.h>
 
 #include    "bcm2835.h"
 #include    "printf.h"
@@ -28,11 +29,14 @@
 /* -----------------------------------------
    Local definitions
 ----------------------------------------- */
+// AVR and keyboard
 #define     AVR_RESET           RPI_V2_GPIO_P1_11
 #define     PRI_TEST_POINT      RPI_V2_GPIO_P1_07
 
+// Miscellaneous IO
 #define     EMULATOR_RESET      RPI_V2_GPIO_P1_29
 
+// Audio multiplexer and DAC/ADC
 #define     AUDIO_MUX0          RPI_V2_GPIO_P1_03
 #define     AUDIO_MUX1          RPI_V2_GPIO_P1_05
 #define     AUDIO_MUX_MASK      ((1 << AUDIO_MUX0) | (1 << AUDIO_MUX1))
@@ -54,11 +58,73 @@
 #define     DAC_BIT_MASK        ((1 << DAC_BIT0) | (1 << DAC_BIT1) | (1 << DAC_BIT2) | \
                                  (1 << DAC_BIT3) | (1 << DAC_BIT4) | (1 << DAC_BIT5))
 
+// SD card
+#define     SPI_FILL_BYTE           0xff
+
+#define     SD_CMD0                 0
+#define     SD_CMD1                 1
+#define     SD_CMD8                 8
+#define     SD_CMD9                 9
+#define     SD_CMD10                10
+#define     SD_CMD12                12
+#define     SD_CMD16                16
+#define     SD_CMD17                17
+#define     SD_CMD18                18
+#define     SD_CMD23                23
+#define     SD_CMD24                24
+#define     SD_CMD25                25
+#define     SD_CMD55                55
+#define     SD_CMD58                58
+#define     SD_CMD59                59
+#define     SD_ACMD41               41
+
+#define     SD_GO_IDLE_STATE        SD_CMD0
+#define     SD_SEND_OP_COND         SD_CMD1
+#define     SD_SEND_IF_COND         SD_CMD8
+#define     SD_SEND_CSD             SD_CMD9
+#define     SD_SEND_CID             SD_CMD10
+#define     SD_STOP_TRANSMISSION    SD_CMD12
+#define     SD_SET_BLOCKLEN         SD_CMD16
+#define     SD_READ_SINGLE_BLOCK    SD_CMD17
+#define     SD_READ_MULTIPLE_BLOCK  SD_CMD18
+#define     SD_SET_BLOCK_COUNT      SD_CMD23
+#define     SD_WRITE_BLOCK          SD_CMD24
+#define     SD_WRITE_MULTIPLE_BLOCK SD_CMD25
+#define     SD_APP_CMD              SD_CMD55
+#define     SD_READ_OCR             SD_CMD58
+#define     SD_NO_CRC               SD_CMD59
+#define     SD_APP_SEND_OP_COND     SD_ACMD41
+
+#define     SD_NCR                  10          // Command response time: 0 to 8 bytes for SDC, 1 to 8 bytes for MMC
+#define     SD_TOKEN_START_BLOCK    0xfe        // For CMD17/18/24
+
+#define     SD_R1_READY             0b00000000
+#define     SD_R1_IDLE              0b00000001
+#define     SD_R1_ERASE_RESET       0b00000010
+#define     SD_R1_ILLIGAL_CMD       0b00000100
+#define     SD_R1_CRC_ERROR         0b00001000
+#define     SD_R1_ERASE_ERROR       0b00010000
+#define     SD_R1_ADDRESS_ERROR     0b00100000
+#define     SD_R1_PARAM_ERROR       0b01000000
+#define     SD_FAILURE              0xff
+
+#define     SD_BLOCK_SIZE           512         // Bytes
+#define     SD_TIME_OUT             500000      // 500mSec
+#define     SD_SPI_BIT_RATE         100000
+
+#define     SD_SPI_CE2              RPI_V2_GPIO_P1_36
+
 /* -----------------------------------------
    Module static functions
 ----------------------------------------- */
-static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix);
-static int fb_set_tty(const int mode);
+static uint8_t   sd_send_cmd(int cmd, uint32_t arg);
+static int       sd_wait_read_token(uint8_t token);
+static int       sd_wait_ready(void);
+static uint8_t   sd_get_crc7(uint8_t *message, int length);
+static uint16_t  sd_get_crc16(const uint8_t *buf, int len );
+
+static uint8_t  *fb_set_resolution(int fbh, int x_pix, int y_pix);
+static int       fb_set_tty(const int mode);
 
 /* -----------------------------------------
    Module globals
@@ -78,11 +144,6 @@ static int      fbfd = 0;                        // frame buffer file descriptor
  *  return: -1 fail, 0 ok
  */
 int rpi_gpio_init(void)
-#if (RPI_BARE_METAL)
-{
-    return 0;
-} /* end of RPI_BARE_METAL */
-#else
 {
     if (!bcm2835_init())
     {
@@ -93,6 +154,7 @@ int rpi_gpio_init(void)
     if (!bcm2835_spi_begin())
     {
       printf("bcm2835_spi_begin failed. Are you running as root??\n");
+      bcm2835_close();
       return -1;
     }
 
@@ -136,17 +198,14 @@ int rpi_gpio_init(void)
     bcm2835_gpio_set_pud(EMULATOR_RESET, BCM2835_GPIO_PUD_UP);
 #endif
 
-    /* Initialize SPI
+    /* Initialize SPI0 for AVR keyboard interface
      */
     bcm2835_spi_setBitOrder(BCM2835_SPI_BIT_ORDER_MSBFIRST);
     bcm2835_spi_setDataMode(BCM2835_SPI_MODE0);
     bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_128);
-    //bcm2835_spi_chipSelect(BCM2835_SPI_CS0);
-    //bcm2835_spi_setChipSelectPolarity(BCM2835_SPI_CS0, LOW);
 
     return 0;
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /********************************************************************
  * rpi_fb_init()
@@ -154,16 +213,11 @@ int rpi_gpio_init(void)
  *  Initialize the RPi frame buffer device.
  *
  *  param:  None
- *  return: pointer to frame buffer, or 0 if no error,
+ *  return: Pointer to frame buffer, or 0 if error,
  */
 uint8_t *rpi_fb_init(int x_pix, int y_pix)
-#if (RPI_BARE_METAL)
 {
-    return 0L;
-} /* end of RPI_BARE_METAL */
-#else
-{
-    uint8_t *fbp = 0L;
+    uint8_t *fbp = 0;
 
     // Open the frame buffer device file for reading and writing
     if ( fbfd == 0 )
@@ -172,60 +226,47 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
         if (fbfd == -1)
         {
             printf("%s: Cannot open frame buffer /dev/fb0\n", __FUNCTION__);
-            return 0L;
+            return 0;
         }
     }
 
     printf("Frame buffer device is open\n");
 
-    fbp = fb_set_resolution(fbfd, x_pix, y_pix);
-
-    if ( (int)fbp == -1 )
+    if ( (int)(fbp = fb_set_resolution(fbfd, x_pix, y_pix)) == 0 )
     {
-        printf("%s: Failed to mmap()\n", __FUNCTION__);
-        return 0L;
+        return 0;
     }
 
     // Select graphics mode
     if ( fb_set_tty(1) )
     {
         printf("%s: Could not set tty0 mode.\n", __FUNCTION__);
-        return 0L;
+        return 0;
     }
 
     return fbp;
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /********************************************************************
  * rpi_fb_resolution()
  *
  *  Change the RPi frame buffer resolution.
- *  Frame buffer must be alerady initialized with rpi_fb_init()
+ *  Frame buffer must be already initialized with rpi_fb_init()
  *
  *  param:  None
- *  return: Pointer to frame buffer, or 0 if no error,
+ *  return: Pointer to frame buffer, or 0 if error,
  */
 uint8_t *rpi_fb_resolution(int x_pix, int y_pix)
-#if (RPI_BARE_METAL)
 {
-    return 0L;
-} /* end of RPI_BARE_METAL */
-#else
-{
-    uint8_t *fbp = 0L;
+    uint8_t *fbp = 0;
 
-    fbp = fb_set_resolution(fbfd, x_pix, y_pix);
-
-    if ( (int)fbp == -1 )
+    if ( (int)(fbp = fb_set_resolution(fbfd, x_pix, y_pix)) == 0 )
     {
-        printf("%s: Failed to mmap()\n", __FUNCTION__);
-        return 0L;
+        return 0;
     }
 
     return fbp;
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
  * rpi_system_timer()
@@ -236,15 +277,9 @@ uint8_t *rpi_fb_resolution(int x_pix, int y_pix)
  *  return: System timer value
  */
 uint32_t rpi_system_timer(void)
-#if (RPI_BARE_METAL)
-{
-    return 0L;
-} /* end of RPI_BARE_METAL */
-#else
 {
     return (uint32_t) clock();
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
  * rpi_keyboard_read()
@@ -255,15 +290,9 @@ uint32_t rpi_system_timer(void)
  *  return: Key code
  */
 int rpi_keyboard_read(void)
-#if (RPI_BARE_METAL)
-{
-    return 0L;
-} /* end of RPI_BARE_METAL */
-#else
 {
     return (int)bcm2835_spi_transfer(0);
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
  * rpi_keyboard_reset()
@@ -274,16 +303,11 @@ int rpi_keyboard_read(void)
  *  return: None
  */
 void rpi_keyboard_reset(void)
-#if (RPI_BARE_METAL)
-{
-} /* end of RPI_BARE_METAL */
-#else
 {
     bcm2835_gpio_write(AVR_RESET, LOW);
     usleep(10);
     bcm2835_gpio_write(AVR_RESET, HIGH);
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
  * rpi_joystk_comp()
@@ -294,11 +318,6 @@ void rpi_keyboard_reset(void)
  *  return: GPIO joystick comparator input level
  */
 int rpi_joystk_comp(void)
-#if (RPI_BARE_METAL)
-{
-    return 0;
-} /* end of RPI_BARE_METAL */
-#else
 {
     /* The delay is needed to allow the DAC and comparator
      * to stabilize the output, and propagate it through the
@@ -318,7 +337,6 @@ int rpi_joystk_comp(void)
 
     return (int) bcm2835_gpio_lev(JOYSTK_COMP);
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
  * rpi_rjoystk_button()
@@ -329,15 +347,9 @@ int rpi_joystk_comp(void)
  *  return: GPIO joystick button input level
  */
 int rpi_rjoystk_button(void)
-#if (RPI_BARE_METAL)
-{
-    return 1;
-} /* end of RPI_BARE_METAL */
-#else
 {
     return (int) bcm2835_gpio_lev(JOYSTK_BUTTON);
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
  * rpi_reset_button()
@@ -348,11 +360,6 @@ int rpi_rjoystk_button(void)
  *  return: GPIO reset button input level
  */
 int rpi_reset_button(void)
-#if (RPI_BARE_METAL)
-{
-    return 1;
-} /* end of RPI_BARE_METAL */
-#else
 {
 #if (RPI_MODEL_ZERO==1)
     return (int) bcm2835_gpio_lev(EMULATOR_RESET);
@@ -360,7 +367,6 @@ int rpi_reset_button(void)
     return 1;
 #endif
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
  * rpi_audio_mux_set()
@@ -371,10 +377,6 @@ int rpi_reset_button(void)
  *  return: None
  */
 void rpi_audio_mux_set(int select)
-#if (RPI_BARE_METAL)
-{
-} /* end of RPI_BARE_METAL */
-#else
 {
     static int previous_select = 0;
 
@@ -385,7 +387,6 @@ void rpi_audio_mux_set(int select)
         previous_select = select;
     }
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
  * rpi_write_dac()
@@ -396,10 +397,6 @@ void rpi_audio_mux_set(int select)
  *  return: None
  */
 void rpi_write_dac(int dac_value)
-#if (RPI_BARE_METAL)
-{
-} /* end of RPI_BARE_METAL */
-#else
 {
     uint32_t    dac_bit_values = 0;
 
@@ -418,7 +415,6 @@ void rpi_write_dac(int dac_value)
      */
     bcm2835_gpio_write_mask(dac_bit_values, (uint32_t) DAC_BIT_MASK);
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
  * rpi_disable()
@@ -478,20 +474,10 @@ void rpi_testpoint_off(void)
  *  return: None
  */
 void rpi_halt(char *msg)
-#if (RPI_BARE_METAL)
-{
-    printf("%s\nHalting\n", msg);
-    for (;;)
-    {
-        /* Halt in endless loop */
-    }
-} /* end of RPI_BARE_METAL */
-#else
 {
     printf("%s\n", msg);
     assert(0);
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /*------------------------------------------------
  * _putchar()
@@ -502,17 +488,345 @@ void rpi_halt(char *msg)
  *  return: none
  */
 void _putchar(char character)
-#if (RPI_BARE_METAL)
-{
-    if ( character == '\n')
-        bcm2835_auxuart_putchr('\r');
-    bcm2835_auxuart_putchr(character);
-}
-#else
 {
     putchar(character);
 }
-#endif  /* end of not RPI_BARE_METAL */
+
+/* -------------------------------------------------------------
+ * rpi_sd_init()
+ *
+ *  Initialize SD card and reader
+ *
+ *  Param:  None
+ *  Return: Driver error
+ */
+#if (RPI_MODEL_ZERO==0)
+sd_error_t rpi_sd_init(void)
+{
+    return SD_GPIO_FAIL;
+}
+#else
+sd_error_t rpi_sd_init(void)
+{
+    uint8_t     mosi_buffer[10] = {255, 255, 255, 255, 255, 255, 255, 255, 255, 255};
+    uint8_t     sd_response;
+    uint32_t    start_time;
+
+    if (!bcm2835_aux_spi_begin())
+    {
+      printf("bcm2835_aux_spi_begin failed. Are you running as root??\n");
+      return SD_GPIO_FAIL;
+    }
+
+    /* Initialize SPI1 for SD card
+     * Resource: http://elm-chan.org/docs/mmc/i/sdinit.png
+     */
+    bcm2835_gpio_fsel(SD_SPI_CE2, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_set(SD_SPI_CE2);                           // CS to 'High'
+
+    //BCM2835_AUX_SPI_CLOCK_MIN
+    bcm2835_aux_spi_setClockDivider(bcm2835_aux_spi_CalcClockDivider(SD_SPI_BIT_RATE));
+
+    bcm2835_delayMicroseconds(2000);                        // Power on delay
+    bcm2835_aux_spi_transfern((char *) mosi_buffer, 10);    // Dummy clocks, CS=DI=High
+    bcm2835_gpio_fsel(SD_SPI_CE2, BCM2835_GPIO_FSEL_ALT4);  // Back to normal CS
+
+    if ( sd_wait_ready() == 0 )                             // Check MISO is high (card DO=1)
+    {
+        printf("sd_wait_ready() timed out waiting for SD ready state.\n");
+        return SD_FAIL;
+    }
+
+    sd_response = sd_send_cmd(SD_GO_IDLE_STATE, 0);
+    if ( sd_response != SD_R1_IDLE )
+    {
+      printf("SD card failed SD_GO_IDLE_STATE.\n");
+      return SD_FAIL;
+    }
+
+    start_time = (uint32_t) clock();
+
+    do
+        {
+            sd_response = sd_send_cmd(SD_APP_CMD, 0);
+            if ( sd_response == SD_FAILURE )
+            {
+              printf("SD card failed SD_APP_CMD.\n");
+              return SD_FAIL;
+            }
+
+            sd_response = sd_send_cmd(SD_APP_SEND_OP_COND, 0);
+            if ( sd_response == SD_FAILURE )
+            {
+              printf("SD card failed SD_APP_SEND_OP_COND.\n");
+              return SD_FAIL;
+            }
+        }
+    while ( sd_response != SD_R1_READY && ((uint32_t)clock() - start_time) < SD_TIME_OUT );
+
+    if ( sd_response != SD_R1_READY )
+    {
+      printf("SD card failed SD_APP_SEND_OP_COND.\n");
+      return SD_TIMEOUT;
+    }
+
+    sd_response = sd_send_cmd(SD_SET_BLOCKLEN, SD_BLOCK_SIZE);
+    if ( sd_response != SD_R1_READY )
+    {
+      printf("SD card failed SD_SET_BLOCKLEN.\n");
+      return SD_FAIL;
+    }
+
+    return SD_OK;
+}
+#endif
+
+/* -------------------------------------------------------------
+ * rpi_sd_read_block()
+ *
+ *  Read a block (sector) from the SD card
+ *
+ *  Param:  LBA number, buffer address, and its length
+ *  Return: Driver error
+ */
+#if (RPI_MODEL_ZERO==0)
+sd_error_t rpi_sd_read_block(uint32_t lba, uint8_t *buffer, uint32_t length)
+{
+    return SD_GPIO_FAIL;
+}
+#else
+sd_error_t rpi_sd_read_block(uint32_t lba, uint8_t *buffer, uint32_t length)
+{
+    int     i;
+    uint8_t sd_response;
+    uint8_t crc_high, crc_low;
+    uint8_t input_buffer[SD_BLOCK_SIZE+2];  // Data block plus two-byte CRC
+
+    if ( length < SD_BLOCK_SIZE )
+    {
+        return SD_READ_FAIL;
+    }
+
+    /* Send read command to SD card
+     */
+    bcm2835_delayMicroseconds(500);
+
+    sd_response = sd_send_cmd(SD_READ_SINGLE_BLOCK, lba * SD_BLOCK_SIZE);   // *** SDC uses BYTE addressing ***
+    if ( sd_response != SD_R1_READY )
+    {
+        printf("rpi_sd_read_block(): sd_send_cmd() failed %d.\n", sd_response);
+        return SD_FAIL;
+    }
+
+    /* Wait for start of data token (0xFE)
+     */
+    if ( sd_wait_read_token(SD_TOKEN_START_BLOCK) == 0 )
+    {
+        printf("rpi_sd_read_block(): sd_wait_read_token() failed.\n");
+        return SD_TIMEOUT;
+    }
+
+    /* Read a data block (one SD sector)
+     */
+    memset(input_buffer, SPI_FILL_BYTE, (SD_BLOCK_SIZE+2));
+
+    for ( i = 0; i < (SD_BLOCK_SIZE+2); i++ )
+    {
+        input_buffer[i] = bcm2835_aux_spi_transfer(SPI_FILL_BYTE);
+    }
+
+    /* Check CRC
+     */
+    crc_high = input_buffer[SD_BLOCK_SIZE];
+    crc_low = input_buffer[SD_BLOCK_SIZE+1];
+
+    if ( sd_get_crc16(input_buffer, SD_BLOCK_SIZE) != ((crc_high << 8) + crc_low) )
+    {
+        printf("rpi_sd_read_block(): sd_get_crc16() failed.\n");
+        return SD_BAD_CRC;
+    }
+
+    memcpy(buffer, input_buffer, SD_BLOCK_SIZE);
+
+    return SD_OK;
+}
+#endif
+
+/* -------------------------------------------------------------
+ * sd_send_cmd()
+ *
+ *  Send a command to the SD card
+ *
+ *  Param:  Command code and argument
+ *  Return: Failure=SD_FAILURE, or R1 SD status
+ */
+uint8_t sd_send_cmd(int cmd, uint32_t arg)
+{
+    int     i;
+    uint8_t response;
+    uint8_t mosi_buffer[6];
+    uint8_t crc;
+
+    /* check if DO is high
+     */
+    if ( sd_wait_ready() == 0 )
+    {
+        printf("sd_wait_ready() timed out waiting for SD ready state.\n");
+        return SD_FAILURE;
+    }
+
+    /* Prepare the command packet and
+     * always provide a correct CRC
+     */
+    mosi_buffer[0] = 0x40 | ((uint8_t) cmd);
+    mosi_buffer[1] = (uint8_t)(arg >> 24);
+    mosi_buffer[2] = (uint8_t)(arg >> 16);
+    mosi_buffer[3] = (uint8_t)(arg >> 8);
+    mosi_buffer[4] = (uint8_t)(arg >> 0);
+
+    crc = sd_get_crc7(mosi_buffer, 5);
+    mosi_buffer[5] = (crc << 1) | 0b00000001;
+
+    /* Send the command command packet via SPI.
+     */
+    for ( i = 0; i < 6; i++ )
+    {
+        bcm2835_aux_spi_transfer(mosi_buffer[i]);
+    }
+
+    /* Send out '1's on MOSI until a response is received from the SD
+     */
+    i = 0;
+    do
+    {
+        response = bcm2835_aux_spi_transfer(SPI_FILL_BYTE);
+        i++;
+    }
+    while ( response == SPI_FILL_BYTE && i < SD_NCR );
+
+    return response;
+}
+
+/* -------------------------------------------------------------
+ * sd_wait_read_token()
+ *
+ *  Wait for a read-token from the SD card
+ *
+ *  Param:  Token to wait for
+ *  Return: ok=1, time-out=0
+ */
+static int sd_wait_read_token(uint8_t token)
+{
+    uint32_t    start_time;
+    uint8_t     have_token;
+
+    start_time = (uint32_t) clock();
+    have_token = 0;
+
+    do
+    {
+        if ( bcm2835_aux_spi_transfer(SPI_FILL_BYTE) == token )
+        {
+            have_token = 1;
+            break;
+        }
+    }
+    while ( ((uint32_t)clock() - start_time) < SD_TIME_OUT );
+
+    return have_token;
+}
+
+/* -------------------------------------------------------------
+ * sd_wait_ready()
+ *
+ *  Wait for a ready state (DO=1) from the SD card
+ *
+ *  Param:  None
+ *  Return: read=1, time-out=0
+ */
+static int sd_wait_ready(void)
+{
+    uint32_t    start_time;
+
+    start_time = (uint32_t) clock();
+
+    do
+    {
+        if ( SPI_FILL_BYTE == bcm2835_aux_spi_transfer(SPI_FILL_BYTE) )
+        {
+            return 1;
+        }
+    }
+    while ( ((uint32_t)clock() - start_time) < SD_TIME_OUT );
+
+    return 0;
+}
+
+/* -------------------------------------------------------------
+ * sd_get_crc7()
+ *
+ *  Calculate CRC7 on a message.
+ *
+ *  Param:  Pointer to message buffer, length of message
+ *  Return: CRC7 byte
+ */
+static uint8_t sd_get_crc7(uint8_t *message, int length)
+{
+    static uint8_t crc_lookup_table[256] =
+        {
+            0x00, 0x09, 0x12, 0x1b, 0x24, 0x2d, 0x36, 0x3f, 0x48, 0x41, 0x5a, 0x53, 0x6c, 0x65, 0x7e, 0x77,
+            0x19, 0x10, 0x0b, 0x02, 0x3d, 0x34, 0x2f, 0x26, 0x51, 0x58, 0x43, 0x4a, 0x75, 0x7c, 0x67, 0x6e,
+            0x32, 0x3b, 0x20, 0x29, 0x16, 0x1f, 0x04, 0x0d, 0x7a, 0x73, 0x68, 0x61, 0x5e, 0x57, 0x4c, 0x45,
+            0x2b, 0x22, 0x39, 0x30, 0x0f, 0x06, 0x1d, 0x14, 0x63, 0x6a, 0x71, 0x78, 0x47, 0x4e, 0x55, 0x5c,
+            0x64, 0x6d, 0x76, 0x7f, 0x40, 0x49, 0x52, 0x5b, 0x2c, 0x25, 0x3e, 0x37, 0x08, 0x01, 0x1a, 0x13,
+            0x7d, 0x74, 0x6f, 0x66, 0x59, 0x50, 0x4b, 0x42, 0x35, 0x3c, 0x27, 0x2e, 0x11, 0x18, 0x03, 0x0a,
+            0x56, 0x5f, 0x44, 0x4d, 0x72, 0x7b, 0x60, 0x69, 0x1e, 0x17, 0x0c, 0x05, 0x3a, 0x33, 0x28, 0x21,
+            0x4f, 0x46, 0x5d, 0x54, 0x6b, 0x62, 0x79, 0x70, 0x07, 0x0e, 0x15, 0x1c, 0x23, 0x2a, 0x31, 0x38,
+            0x41, 0x48, 0x53, 0x5a, 0x65, 0x6c, 0x77, 0x7e, 0x09, 0x00, 0x1b, 0x12, 0x2d, 0x24, 0x3f, 0x36,
+            0x58, 0x51, 0x4a, 0x43, 0x7c, 0x75, 0x6e, 0x67, 0x10, 0x19, 0x02, 0x0b, 0x34, 0x3d, 0x26, 0x2f,
+            0x73, 0x7a, 0x61, 0x68, 0x57, 0x5e, 0x45, 0x4c, 0x3b, 0x32, 0x29, 0x20, 0x1f, 0x16, 0x0d, 0x04,
+            0x6a, 0x63, 0x78, 0x71, 0x4e, 0x47, 0x5c, 0x55, 0x22, 0x2b, 0x30, 0x39, 0x06, 0x0f, 0x14, 0x1d,
+            0x25, 0x2c, 0x37, 0x3e, 0x01, 0x08, 0x13, 0x1a, 0x6d, 0x64, 0x7f, 0x76, 0x49, 0x40, 0x5b, 0x52,
+            0x3c, 0x35, 0x2e, 0x27, 0x18, 0x11, 0x0a, 0x03, 0x74, 0x7d, 0x66, 0x6f, 0x50, 0x59, 0x42, 0x4b,
+            0x17, 0x1e, 0x05, 0x0c, 0x33, 0x3a, 0x21, 0x28, 0x5f, 0x56, 0x4d, 0x44, 0x7b, 0x72, 0x69, 0x60,
+            0x0e, 0x07, 0x1c, 0x15, 0x2a, 0x23, 0x38, 0x31, 0x46, 0x4f, 0x54, 0x5d, 0x62, 0x6b, 0x70, 0x79
+        };
+
+    int     i;
+    uint8_t crc = 0;
+
+    for ( i = 0; i < length; i++ )
+        crc = crc_lookup_table[(crc << 1) ^ message[i]];
+
+    return crc;
+}
+
+/* -------------------------------------------------------------
+ * sd_get_crc16()
+ *
+ *  Calculate CRC16 on a message.
+ *
+ *  Param:  Pointer to message buffer, length of message
+ *  Return: CRC16 word
+ */
+static uint16_t sd_get_crc16(const uint8_t *buf, int len )
+{
+    uint16_t crc = 0;
+    int i;
+
+    while( len-- )
+    {
+        crc ^= *(uint8_t *)buf++ << 8;
+        for( i = 0; i < 8; i++ )
+        {
+            if( crc & 0x8000 )
+                crc = (crc << 1) ^ 0x1021;
+            else
+                crc = crc << 1;
+        }
+    }
+    return crc;
+}
 
 /********************************************************************
  * fb_set_resolution()
@@ -524,13 +838,8 @@ void _putchar(char character)
  *  return: Pointer to memory, 0L on error
  */
 static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
-#if (RPI_BARE_METAL)
 {
-    return 0;
-} /* end of RPI_BARE_METAL */
-#else
-{
-    uint8_t    *fbp = 0L;
+    uint8_t    *fbp = 0;
     int         page_size = 0;
     long int    screen_size = 0;
 
@@ -585,9 +894,14 @@ static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
                          MAP_SHARED,
                          fbfd, 0);
 
+    if ( (int)fbp == -1 )
+    {
+        printf("%s: Failed to mmap()\n", __FUNCTION__);
+        return 0;
+    }
+
     return fbp;
 }
-#endif  /* end of not RPI_BARE_METAL */
 
 /********************************************************************
  * fb_set_tty()
@@ -599,11 +913,6 @@ static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
  *         -1 on error
  */
 static int fb_set_tty(const int mode)
-#if (RPI_BARE_METAL)
-{
-    return -1;
-} /* end of RPI_BARE_METAL */
-#else
 {
     int     console_fd;
     int     result = 0;
@@ -637,4 +946,3 @@ static int fb_set_tty(const int mode)
 
     return result;
 }
-#endif  /* end of not RPI_BARE_METAL */

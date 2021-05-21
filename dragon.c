@@ -17,6 +17,7 @@
 #include    "sam.h"
 #include    "vdg.h"
 #include    "pia.h"
+#include    "loader.h"
 
 /* -----------------------------------------
    Dragon 32 ROM image
@@ -29,6 +30,8 @@
 ----------------------------------------- */
 #define     DRAGON_ROM_START        0x8000
 #define     DRAGON_ROM_END          0xfeff
+
+#define     ESCAPE_LOADER           1       // Pressing F1
 
 /* -----------------------------------------
    Module functions
@@ -44,7 +47,8 @@
     int main(int argc, char *argv[])
 #endif
 {
-    int             i;
+    int     i;
+    int     emulator_escape_code;
 
     /* ROM code load
      */
@@ -53,18 +57,6 @@
     while ( code[i] != -1 )
     {
         mem_write(i + LOAD_ADDRESS, code[i]);
-        i++;
-    }
-    printf("Loaded %i bytes.\n", i - 1);
-
-    /* Cartridge ROM load as demo for a game
-     * TODO remove when loader/manager from SD card is available.
-     */
-    printf("Loading cartridge... ");
-    i = 0;
-    while ( cartridge[i] != -1 )
-    {
-        mem_write(i + CART_LOAD_ADDRESS, cartridge[i]);
         i++;
     }
     printf("Loaded %i bytes.\n", i - 1);
@@ -96,6 +88,10 @@
             cpu_reset(1);
         else
             cpu_reset(0);
+
+        emulator_escape_code = pia_function_key();
+        if ( emulator_escape_code == ESCAPE_LOADER )
+            loader();
 
         vdg_render();
 

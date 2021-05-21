@@ -44,6 +44,8 @@
 #define     AUDIO_MUX_JSTKX     2
 #define     AUDIO_MUX_JSTKY     3
 
+#define     SCAN_CODE_F1        58
+
 /* -----------------------------------------
    Module static functions
 ----------------------------------------- */
@@ -60,12 +62,14 @@ static uint8_t get_keyboard_row_scan(uint8_t data);
 /* -----------------------------------------
    Module globals
 ----------------------------------------- */
-int     pia0_cb1_int_enabled = 0;
-uint8_t pia0_cra = 0;
-uint8_t pia0_crb = 0;
-uint8_t pia1_crb = 0;
+static int     pia0_cb1_int_enabled = 0;
+static uint8_t pia0_cra = 0;
+static uint8_t pia0_crb = 0;
+static uint8_t pia1_crb = 0;
 
-uint8_t audio_mux_select = AUDIO_MUX_DAC;
+static uint8_t audio_mux_select = AUDIO_MUX_DAC;
+
+static int     function_key = 0;
 
 /*
     Dragon keyboard map
@@ -82,7 +86,7 @@ uint8_t audio_mux_select = AUDIO_MUX_DAC;
     PA6 | ENT   CLR   BRK   N/C   N/C   N/C   N/C  SHFT |
     PA7 | Comparator input                              |   MSB
 */
-uint8_t scan_code_table[85][2] = {
+static uint8_t scan_code_table[85][2] = {
         // Column     Row
         { 0xff,       255 }, // #0
         { 0xff,       255 },
@@ -171,7 +175,7 @@ uint8_t scan_code_table[85][2] = {
         { 0b11111011,   6 }, // #84  Break
 };
 
-uint8_t keyboard_rows[KBD_ROWS] = {
+static uint8_t keyboard_rows[KBD_ROWS] = {
         255,    // row PIA0_PA0
         255,    // row PIA0_PA1
         255,    // row PIA0_PA2
@@ -232,6 +236,27 @@ void pia_vsync_irq(void)
         pia0_crb |= PIA_CR_IRQ_STAT;
         cpu_irq(1);
     }
+}
+
+/*------------------------------------------------
+ * pia_function_key()
+ *
+ *  Check if function key was pressed to escape the emulation.
+ *  Return '0' if not, or function key value from 1 to 10
+ *  if a key was pressed and latched.
+ *  If a key was pressed, reset the value latch.
+ *
+ *  param:  Nothing
+ *  return: Function key value 1 to 10, o if none pressed
+ */
+int pia_function_key(void)
+{
+    int key_code;
+
+    key_code = function_key;
+    function_key = 0;
+
+    return key_code;
 }
 
 /*------------------------------------------------
@@ -303,9 +328,14 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
         {
             scan_code = (uint8_t) rpi_keyboard_read();
 
-            if ( (scan_code & 0x7f) >= 59 && (scan_code & 0x7f) <= 68 )
+            //if ( (scan_code & 0x7f) >= 59 && (scan_code & 0x7f) <= 68 )
+            if ( scan_code >= 59 && scan_code <= 68 )
             {
-                // TODO handle special function keys as emulator escapes.
+                /* Store special function keys as emulator escapes
+                 * values between 1 an 10 for F1 to F10 keys
+                 */
+                if ( function_key == 0 )
+                    function_key = scan_code - SCAN_CODE_F1;
             }
             else if ( scan_code != 0 )
             {

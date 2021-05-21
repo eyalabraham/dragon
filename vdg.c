@@ -1,5 +1,5 @@
 /********************************************************************
- * pia.c
+ * vdg.c
  *
  *  Module that implements the MC6847
  *  Video Display Generator (VDG) functionality.
@@ -107,7 +107,7 @@ static int const resolution[][3] = {
     { SCREEN_WIDTH_PIX, SCREEN_HEIGHT_PIX, 512 },   // ALPHA_INTERNAL, 2 color 32x16 512B Default
     { SCREEN_WIDTH_PIX, SCREEN_HEIGHT_PIX, 512 },   // ALPHA_EXTERNAL, 4 color 32x16 512B
     { SCREEN_WIDTH_PIX, SCREEN_HEIGHT_PIX, 512 },   // SEMI_GRAPHICS_4, 8 color 64x32 512B
-    {  64,  48,  512 },                             // SEMI_GRAPHICS_6, 8 color 64x48 512B
+    { SCREEN_WIDTH_PIX, SCREEN_HEIGHT_PIX, 512 },   // SEMI_GRAPHICS_6, 8 color 64x48 512B
     {  64,  64, 2048 },                             // SEMI_GRAPHICS_8, 8 color 64x64 2048B
     {  64,  96, 3072 },                             // SEMI_GRAPHICS_12, 8 color 64x96 3072B
     {  64, 192, 6144 },                             // SEMI_GRAPHICS_24, 8 color 64x192 6144B
@@ -164,7 +164,7 @@ void vdg_init(void)
  *  Render video display.
  *
  *  TODO Consider writing to frame buffer 32-bit at a time instead of 8-bit
- *       per write. This may reduce up render time. Profile render timing
+ *       per write. This may reduce render time. Profile render timing
  *       with GPIO pin.
  *       vdg_render() measured as running every 20mSec (~50Hz)
  *       with a render time of approximately 20uSec.

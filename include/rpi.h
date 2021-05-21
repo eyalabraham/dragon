@@ -23,6 +23,16 @@
     #define     enable()
 #endif
 
+typedef enum
+    {
+        SD_OK,
+        SD_GPIO_FAIL,
+        SD_FAIL,
+        SD_TIMEOUT,
+        SD_BAD_CRC,
+        SD_READ_FAIL,
+    } sd_error_t;
+
 /********************************************************************
  *  RPi bare meta module API
  */
@@ -53,6 +63,9 @@ void     rpi_testpoint_off(void);
 
 void     rpi_halt(char *msg);
 
-void    _putchar(char character);
+void     _putchar(char character);
+
+sd_error_t rpi_sd_init(void);
+sd_error_t rpi_sd_read_block(uint32_t lba, uint8_t *buffer, uint32_t length);
 
 #endif  /* __RPI_H__ */
