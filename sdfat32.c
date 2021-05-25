@@ -14,6 +14,7 @@
 
 #include    <string.h>
 
+#include    "printf.h"
 #include    "rpi.h"
 #include    "sdfat32.h"
 
@@ -21,7 +22,7 @@
    Module definition
 ----------------------------------------- */
 
-#define     FAT32_SEC_SIZE            512       // Bytes
+#define     FAT32_SEC_SIZE          512         // Bytes
 #define     FAT32_MAX_SEC_PER_CLUS  16          // *** 1, 2, 4, 8, 16, 32, 64, 128
 #define     FAT32_END_OF_CHAIN      0x0ffffff8
 
@@ -95,15 +96,6 @@ typedef struct
     uint32_t    file_size_bytes;
 } __attribute__ ((packed)) dir_record_t;
 
-typedef struct
-    {
-        uint32_t    first_lba;
-        uint32_t    fat_begin_lba;
-        uint32_t    cluster_begin_lba;
-        uint32_t    sectors_per_cluster;
-        uint32_t    root_dir_first_cluster;
-    } fat_param_t;
-
 /* -----------------------------------------
    Module functions
 ----------------------------------------- */
@@ -116,7 +108,26 @@ static int         dir_get_lfn(dir_record_t *dir_record, char *name, int name_le
 /* -----------------------------------------
    Module globals
 ----------------------------------------- */
-static  fat_param_t fat32_parameters;
+static uint8_t  cluster_buffer[FAT32_MAX_SEC_PER_CLUS*FAT32_SEC_SIZE];
+
+static struct fat_param_t
+{
+    uint32_t    first_lba;
+    uint32_t    fat_begin_lba;
+    uint32_t    cluster_begin_lba;
+    uint32_t    sectors_per_cluster;
+    uint32_t    root_dir_first_cluster;
+} fat32_parameters;
+
+static struct file_param_t
+{
+    int         file_is_open;       // File open flag
+    uint32_t    file_start_cluster; // Cluster number of the first cluster of the file
+    uint32_t    current_position;   // Current byte position of read pointer
+    uint32_t    current_cluster;    // Current cluster to read
+    uint32_t    file_size;          // File size in bytes
+    uint32_t    cached_cluster;     // The last successful cluster that was read, 0 is none
+} file_parameters;
 
 /* -------------------------------------------------------------
  * fat32_init()
@@ -183,6 +194,10 @@ fat_error_t fat32_init(void)
     fat32_parameters.sectors_per_cluster = bpb.sectors_per_cluster;
     fat32_parameters.root_dir_first_cluster = bpb.cluster_number_root_dir;
 
+    /* Clear file descriptor
+     */
+    fat32_fclose();
+
     return FAT_OK;
 }
 
@@ -211,14 +226,17 @@ int fat32_parse_dir(uint32_t start_cluster, dir_entry_t *directory_list, int dir
     max_dir_records_per_cluster = fat32_parameters.sectors_per_cluster * FAT32_SEC_SIZE / sizeof(dir_record_t);
     dir_next_cluster = start_cluster;
     long_filename_flag = 0;
-    cached_dir_records = -1;
+    cached_dir_records = 0;
 
     for (;;)
     {
         if ( fat32_read_cluster(cluster_buffer, sizeof(cluster_buffer), dir_next_cluster) != FAT_OK )
+        {
+            cached_dir_records = -1;
             break;
+        }
 
-        for ( i = 0, cached_dir_records = 0; (i < max_dir_records_per_cluster && cached_dir_records < dir_list_length); i++ )
+        for ( i = 0; (i < max_dir_records_per_cluster && cached_dir_records < dir_list_length); i++ )
         {
             dir_record = (dir_record_t*) (cluster_buffer + (i * sizeof(dir_record_t)));
             directory_list[cached_dir_records].sfn[0] = 0;
@@ -284,59 +302,187 @@ int fat32_parse_dir(uint32_t start_cluster, dir_entry_t *directory_list, int dir
 
         }
 
-        dir_next_cluster = fat32_get_next_cluster_num(dir_next_cluster);
-        if ( dir_next_cluster >= FAT32_END_OF_CHAIN )
+        if ( cached_dir_records < dir_list_length )
+        {
+            dir_next_cluster = fat32_get_next_cluster_num(dir_next_cluster);
+            if ( dir_next_cluster >= FAT32_END_OF_CHAIN )
+                break;
+        }
+        else
+        {
             break;
+        }
     }
 
     return cached_dir_records;
 }
 
 /* -------------------------------------------------------------
- * fat32_get_file()
+ * fat32_fopen()
  *
- *  Read the contents of a file return it in caller
- *  buffer.
+ *  Open a file for reading. File to open is designated
+ *  via it directory entry and not its name/location.
+ *  Only one file can be open at a time.
  *
- *  Param:  Files's first cluster number, file size in bytes
- *  Return: Bytes read, -1=error
+ *  Param:  Pointed to ile's directory entry structure
+ *  Return: 1=file open, 0=error
  */
-int fat32_get_file(uint32_t file_start_cluster, uint32_t file_size, uint8_t *buffer, int buffer_length)
+int fat32_fopen(dir_entry_t *directory_entry)
 {
-    static uint8_t  cluster_buffer[FAT32_MAX_SEC_PER_CLUS*FAT32_SEC_SIZE];
+    if ( directory_entry->is_directory || file_parameters.file_is_open )
+        return 0;
 
-    uint32_t    file_next_cluster;
-    int         file_byte_count, i;
+    file_parameters.file_is_open = 1;
+    file_parameters.file_start_cluster = directory_entry->cluster_chain_head;
+    file_parameters.current_cluster = file_parameters.file_start_cluster;
+    file_parameters.current_position = 0;
+    file_parameters.file_size = directory_entry->file_size;
+    return 1;
+}
 
-    /* Read file's clusters and output printable
-     * characters to terminal
+/* -------------------------------------------------------------
+ * fat32_fclose()
+ *
+ *  Close a file by resetting its parameter structure.
+ *
+ *  Param:  None
+ *  Return: None
+ */
+void fat32_fclose(void)
+{
+    file_parameters.file_is_open = 0;
+    file_parameters.file_start_cluster = 0;
+    file_parameters.current_cluster = 0;
+    file_parameters.current_position = 0;
+    file_parameters.file_size = 0;
+    file_parameters.cached_cluster = 0;
+}
+
+/* -------------------------------------------------------------
+ * fat32_fseek()
+ *
+ *  Set file read position for the next read command.
+ *
+ *  Param:  0-based index file byte position
+ *  Return: 1=seek ok, 0=error
+ */
+int fat32_fseek(uint32_t byte_position)
+{
+    int         i;
+    int         cluster_index;          // Cluster count in the chain
+    uint32_t    current_cluster_num;    // Actual cluster number
+
+    if ( file_parameters.file_is_open == 0 )
+        return 0;
+
+    file_parameters.cached_cluster = 0; // Invalidate read cache
+
+    if ( byte_position >= file_parameters.file_size )
+        return 0;
+
+    file_parameters.current_position = byte_position;
+
+    /* Update current cluster that holds the byte position
      */
-    file_next_cluster = file_start_cluster;
-    file_byte_count = 0;
+    current_cluster_num = file_parameters.file_start_cluster;
+    cluster_index = file_parameters.current_position / (fat32_parameters.sectors_per_cluster * FAT32_SEC_SIZE);
+
+    for ( i = 0; i < cluster_index; i++ )
+    {
+        /* This should not reach FAT32_END_OF_CHAIN
+         * since we checked against file size in bytes.
+         */
+        current_cluster_num = fat32_get_next_cluster_num(current_cluster_num);
+    }
+
+    file_parameters.current_cluster = current_cluster_num;
+
+    return 1;
+}
+
+/* -------------------------------------------------------------
+ * fat32_fread()
+ *
+ *  Read file data from current position towards end-of-file.
+ *  Read stops at end-of-file or when buffer is full.
+ *  If buffer is full, then another read will continue fron
+ *  the byte after the last position tht was read.
+ *
+ *  Param:  Buffer for file data and the buffer length
+ *  Return: Byte count read, 0=no more data (reached EOF)
+ */
+int fat32_fread(uint8_t *buffer, int buffer_length)
+{
+    int         i;
+    int         byte_count;
+    uint32_t    file_next_cluster;  // Actual cluster number
+    uint32_t    current_offset;     // Byte index within a cluster
+
+    if ( file_parameters.file_is_open == 0 )
+        return 0;
+
+    /* Read clusters and move data into the read buffer until the buffer
+     * if full of reached end of file. Update file position and current
+     * cluster as we progress.
+     */
+    byte_count = 0;
+    current_offset = file_parameters.current_position % (fat32_parameters.sectors_per_cluster * FAT32_SEC_SIZE);
+    file_next_cluster = file_parameters.current_cluster;
 
     for (;;)
     {
-        if ( fat32_read_cluster(cluster_buffer, sizeof(cluster_buffer), file_next_cluster) != FAT_OK )
+        /* Read exit conditions
+         */
+        if ( byte_count == buffer_length ||
+             byte_count == file_parameters.file_size ||
+             file_parameters.current_position == file_parameters.file_size )
         {
-            file_byte_count = -1;
             break;
         }
 
-        for ( i = 0; i < (fat32_parameters.sectors_per_cluster * FAT32_SEC_SIZE) &&
-                     file_byte_count < file_size &&
-                     file_byte_count < buffer_length; i++, file_byte_count++ )
+        /* Read cluster into cache
+         */
+        if ( file_parameters.cached_cluster == 0 )
         {
-            /* Fill user buffer
-             */
-            buffer[file_byte_count] = cluster_buffer[i];
+            if ( fat32_read_cluster(cluster_buffer, sizeof(cluster_buffer), file_next_cluster) != FAT_OK )
+            {
+                file_parameters.cached_cluster = 0;
+                byte_count = -1;
+                break;
+            }
+            else
+            {
+                file_parameters.cached_cluster = file_next_cluster;
+            }
         }
 
-        file_next_cluster = fat32_get_next_cluster_num(file_next_cluster);
-        if ( file_next_cluster >= FAT32_END_OF_CHAIN )
-            break;
+        /* Fill user buffer
+         */
+        for ( i = 0; i                                < (fat32_parameters.sectors_per_cluster * FAT32_SEC_SIZE) &&
+                     byte_count                       < buffer_length &&
+                     file_parameters.current_position < file_parameters.file_size; i++ )
+        {
+            buffer[byte_count] = cluster_buffer[(i + current_offset)];
+
+            byte_count++;
+            file_parameters.current_position++;
+        }
+
+        /* We need to prepare for getting the next cluster if we have more bytes to read
+         * and we finished reading the current cluster.
+         */
+        if ( file_parameters.current_position < file_parameters.file_size &&
+             (file_parameters.current_position % (fat32_parameters.sectors_per_cluster * FAT32_SEC_SIZE)) == 0 )
+        {
+            file_next_cluster = fat32_get_next_cluster_num(file_next_cluster);
+            file_parameters.current_cluster = file_next_cluster;
+            file_parameters.cached_cluster = 0;
+            if ( file_next_cluster >= FAT32_END_OF_CHAIN )
+                break;
+        }
     }
 
-    return file_byte_count;
+    return byte_count;
 }
 
 /* -------------------------------------------------------------

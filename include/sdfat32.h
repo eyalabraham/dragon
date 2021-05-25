@@ -43,6 +43,10 @@ typedef enum
  */
 fat_error_t fat32_init(void);
 int         fat32_parse_dir(uint32_t start_cluster, dir_entry_t *directory_list, int dir_list_length);
-int         fat32_get_file(uint32_t file_start_cluster, uint32_t file_size, uint8_t *buffer, int buffer_length);
+
+int         fat32_fopen(dir_entry_t *directory_entry);
+void        fat32_fclose(void);
+int         fat32_fseek(uint32_t byte_position);
+int         fat32_fread(uint8_t *buffer, int buffer_length);
 
 #endif  /* __SDFAT32_H__ */
