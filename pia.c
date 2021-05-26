@@ -320,49 +320,42 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
      */
     if ( op == MEM_WRITE )
     {
-        /* When writing 0 to the port, the code is checking if any
-         * key is pressed. This is done once, so a good opportunity
+        /* When writing to the port, the ROM code is checking if any
+         * key is pressed. So a good opportunity
          * to read the keyboard scan code.
          */
-        if ( data == 0 )
+        scan_code = (uint8_t) rpi_keyboard_read();
+
+        //if ( (scan_code & 0x7f) >= 59 && (scan_code & 0x7f) <= 68 )
+        if ( scan_code >= 59 && scan_code <= 68 )
         {
-            scan_code = (uint8_t) rpi_keyboard_read();
+            /* Store special function keys as emulator escapes
+             * values between 1 an 10 for F1 to F10 keys
+             */
+            if ( function_key == 0 )
+                function_key = scan_code - SCAN_CODE_F1;
+        }
+        else if ( scan_code != 0 )
+        {
+            /* Sanity check
+             */
+            if ( (row_index = scan_code_table[(scan_code & 0x7f)][1]) == 255 )
+                rpi_halt("Illegal scan code io_handler_pia0_pb()");
 
-            //if ( (scan_code & 0x7f) >= 59 && (scan_code & 0x7f) <= 68 )
-            if ( scan_code >= 59 && scan_code <= 68 )
+            /* Generate row bit patterns emulating row key closures
+             * and match to 'make' or 'break' codes (bit.7 or scan code)
+             */
+            row_switch_bits = scan_code_table[(scan_code & 0x7f)][0];
+
+            if ( scan_code & 0x80 )
             {
-                /* Store special function keys as emulator escapes
-                 * values between 1 an 10 for F1 to F10 keys
-                 */
-                if ( function_key == 0 )
-                    function_key = scan_code - SCAN_CODE_F1;
+                keyboard_rows[row_index] |= ~row_switch_bits;
             }
-            else if ( scan_code != 0 )
+            else
             {
-                /* Sanity check
-                 */
-                if ( (row_index = scan_code_table[(scan_code & 0x7f)][1]) == 255 )
-                    rpi_halt("Illegal scan code io_handler_pia0_pb()");
-
-                /* Generate row bit patterns emulating row key closures
-                 * and match to 'make' or 'break' codes (bit.7 or scan code)
-                 */
-                row_switch_bits = scan_code_table[(scan_code & 0x7f)][0];
-
-                if ( scan_code & 0x80 )
-                {
-                    keyboard_rows[row_index] |= ~row_switch_bits;
-                }
-                else
-                {
-                    keyboard_rows[row_index] &= row_switch_bits;
-                }
+                keyboard_rows[row_index] &= row_switch_bits;
             }
         }
-
-        /* DEBUG
-         */
-        //printf("data 0x%02x get_keyboard_row_scan() 0x%02x\n", data, get_keyboard_column_scan(data));
 
         /* Store the appropriate row bit value
          * for PIA0_PA bit pattern after merging with comparator input

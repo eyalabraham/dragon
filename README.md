@@ -242,7 +242,7 @@ This functionality is available only on RPi Zero/W and uses an SD card interface
 
 ROM code files are loaded as-is into the Dragon's ROM cartridge memory address space. No auto start is provided, but the BASIC EXEC vector if modified to point to 0xC000, so a simple EXEC on from the BASIC prompt will start the ROM code.
 
-CAS files are parsed and loaded upon request. CAS files has a 'load address' built into them and the loader uses these addresses as a load address. CAS files are old-style tape images and not memeory images, so the are parsed and processed to prepare them for loading as a memory image. More on [CAS file formats here](https://retrocomputing.stackexchange.com/questions/150/what-format-is-used-for-coco-cassette-tapes/153#153), and [Dragon 32 CAS format here](https://archive.worldofdragon.org/index.php?title=Tape%5CDisk_Preservation#CAS_File_Format).  This method of loading CAS files is probably the wrong way to deal with cassette files. I will change this in the next revision to a method where a cassette file is mounted (like loading a cassette into a tape player), and then use the BASIC CLOAD and CLOADM commands do the reading like the XROAR emulator does.
+CAS files are parsed and loaded upon request. CAS files has a 'load address' built into them and the loader uses these addresses as a load address. CAS files are old-style tape images and not memeory images, so the are parsed and processed to prepare them for loading as a memory image. More on [CAS file formats here](https://retrocomputing.stackexchange.com/questions/150/what-format-is-used-for-coco-cassette-tapes/153#153), and [Dragon 32 CAS format here](https://archive.worldofdragon.org/index.php?title=Tape%5CDisk_Preservation#CAS_File_Format).  This method of loading CAS files is probably the wrong way to deal with cassette files. I might change this in a future revision to a method where a cassette file is mounted (like loading a cassette into a tape player), and then use the BASIC CLOAD and CLOADM commands do the reading like the XROAR emulator does.
 
 ### TODOs
 
@@ -262,7 +262,6 @@ CAS files are parsed and loaded upon request. CAS files has a 'load address' bui
 - Implement semi-graphic-8, maybe 12 and 24, as some hames use these modes.
 - Joystick drift: check reference voltage reduce to TTL output level from 74LS244
 - Change RESET button function to allow complete restart of emulation without power-cycle, such as a long press.
-- Modify keyboard read functionality to trigger on other keyboard scan method, for example: Chuckie Egg
 
 ## Files
 
