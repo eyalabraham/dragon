@@ -8,12 +8,15 @@
  *******************************************************************/
 
 #include    <stdint.h>
+#include    <string.h>
 
 #include    "cpu.h"
 #include    "rpi.h"
 #include    "mem.h"
 #include    "vdg.h"
 #include    "pia.h"
+#include    "sdfat32.h"
+#include    "loader.h"
 
 /* -----------------------------------------
    Local definitions
@@ -44,6 +47,10 @@
 #define     AUDIO_MUX_JSTKX     2
 #define     AUDIO_MUX_JSTKY     3
 
+#define     MOTOR_ON            0b00001000
+#define     BIT_THRESHOLD_HI    4
+#define     BIT_THRESHOLD_LO    20
+
 #define     SCAN_CODE_F1        58
 
 /* -----------------------------------------
@@ -55,6 +62,7 @@ static uint8_t io_handler_pia0_cra(uint16_t address, uint8_t data, mem_operation
 static uint8_t io_handler_pia0_crb(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia1_pa(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia1_pb(uint16_t address, uint8_t data, mem_operation_t op);
+static uint8_t io_handler_pia1_cra(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia1_crb(uint16_t address, uint8_t data, mem_operation_t op);
 
 static uint8_t get_keyboard_row_scan(uint8_t data);
@@ -65,9 +73,12 @@ static uint8_t get_keyboard_row_scan(uint8_t data);
 static int     pia0_cb1_int_enabled = 0;
 static uint8_t pia0_cra = 0;
 static uint8_t pia0_crb = 0;
+static uint8_t pia1_cra = 0;
 static uint8_t pia1_crb = 0;
 
 static uint8_t audio_mux_select = AUDIO_MUX_DAC;
+
+static dir_entry_t  cas_file;
 
 static int     function_key = 0;
 
@@ -203,9 +214,12 @@ void pia_init(void)
     mem_define_io(PIA0_CRA, PIA0_CRA, io_handler_pia0_cra); // Audio multiplexer select bit.0
     mem_define_io(PIA0_CRB, PIA0_CRB, io_handler_pia0_crb); // Field sync interrupt
 
-    mem_define_io(PIA1_PA, PIA1_PA, io_handler_pia1_pa);    // 6-bit DAC output
+    mem_define_io(PIA1_PA, PIA1_PA, io_handler_pia1_pa);    // 6-bit DAC output, cassette interface input bit
     mem_define_io(PIA1_PB, PIA1_PB, io_handler_pia1_pb);    // VDG mode bits output
+    mem_define_io(PIA1_CRA, PIA1_CRA, io_handler_pia1_cra); // Cassette tape motor control
     mem_define_io(PIA1_CRB, PIA1_CRB, io_handler_pia1_crb); // Audio multiplexer select bit.1
+
+    memset(&cas_file, 0, sizeof(dir_entry_t));
 }
 
 /*------------------------------------------------
@@ -434,7 +448,7 @@ static uint8_t io_handler_pia0_crb(uint16_t address, uint8_t data, mem_operation
 /*------------------------------------------------
  * io_handler_pia1_pa()
  *
- *  IO call-back handler 0xFF22 Dir PIA1-A output to 6-bit DAC
+ *  IO call-back handler 0xFF20 Dir PIA1-A output to 6-bit DAC
  *  Traps and handles writes to PA bit.2 to bit.7
  *
  *  param:  Call address, data byte for write operation, and operation type
@@ -442,12 +456,80 @@ static uint8_t io_handler_pia0_crb(uint16_t address, uint8_t data, mem_operation
  */
 static uint8_t io_handler_pia1_pa(uint16_t address, uint8_t data, mem_operation_t op)
 {
+    static  uint8_t byte = 0;
+    static  int     bit_index = 0;
+    static  int     bit_timing_threshold = 0;
+    static  int     bit_timing_count = 0;
+
+    int     cas_eof;
     int     dac_output;
 
     if ( op == MEM_WRITE )
     {
         dac_output = (data >> 2) & 0x3f;
         rpi_write_dac(dac_output);
+    }
+    else
+    {
+        /* Reading the cassette tape input bit PIA1-PA0:
+         * 1) Bits are fed into PA0 with LSB first
+         * 2) a '1' bit toggles PA0 to '0' then '1' for BIT_THRESHOLD_HI/2 reads of PA0
+         * 3) a '0' bit toggles PA0 to '0' then '1' for BIT_THRESHOLD_LO/2 reads of PA0
+         * 4) The read count threshold of PA0 that determines the bit state is 18
+         *    according to the Dragon ROM listing
+         * 5) The normal PA0 state is '0'
+         *
+         * This process fakes the bit stream coming from the cassette tape interface
+         * with the advantage that it can synchronize on the bit reads. The interface
+         * can be hacked to speed up the load time by changing the threshold of 18
+         * in Dragon RAM location 0x0092 to a lower number.
+         *
+         */
+        if ( bit_index == 0 )
+        {
+            cas_eof = !fat32_fread(&byte, 1);
+
+            bit_index = 9;
+            bit_timing_threshold = 0;
+            bit_timing_count = 0;
+
+            /* TODO Will we see an EOF because EOF-CAS-block would be read first?
+             *      Not sure how we handle and EOF.
+             *      There is also no need to fat32_fclose() the file.
+             */
+            if ( cas_eof )
+            {
+                byte = 0x55;
+            }
+        }
+
+        if ( bit_timing_count == bit_timing_threshold )
+        {
+            if ( byte & 0b00000001 )
+            {
+                bit_timing_threshold = BIT_THRESHOLD_HI;
+            }
+            else
+            {
+                bit_timing_threshold = BIT_THRESHOLD_LO;
+            }
+
+            bit_timing_count = 0;
+
+            byte = byte >> 1;
+            bit_index--;
+        }
+
+        if ( bit_timing_count < (bit_timing_threshold / 2) )
+        {
+            data &= 0b11111110;
+        }
+        else
+        {
+            data |= 0b00000001;
+        }
+
+        bit_timing_count++;
     }
 
     return data;
@@ -477,9 +559,49 @@ static uint8_t io_handler_pia1_pb(uint16_t address, uint8_t data, mem_operation_
 }
 
 /*------------------------------------------------
+ * io_handler_pia1_cra()
+ *
+ *  IO call-back handler 0xFF21 PIA1-A Control register
+ *  responding the cassette motor on-off select bit CA2
+ *
+ *  param:  Call address, data byte for write operation, and operation type
+ *  return: Status or data byte
+ */
+static uint8_t io_handler_pia1_cra(uint16_t address, uint8_t data, mem_operation_t op)
+{
+    if ( op == MEM_WRITE )
+    {
+        pia1_cra = data;
+
+        if ( data & 0b00110000 )
+        {
+            if ( data & MOTOR_ON )
+            {
+                /* If the motor is turned on then get the mounted
+                 * CAS file and open it. Not checking errors, if the file
+                 * is open then ok as it will never be a directory either.
+                 * Reopening a file does not reset the read pointer so no harm there either.
+                 */
+                if ( loader_mount_cas_file(&cas_file) )
+                {
+                    fat32_fopen(&cas_file);
+                }
+            }
+            else
+            {
+                /* Do nothing with motor-off, not even fat32_fclose()
+                 */
+            }
+        }
+    }
+
+    return pia1_cra;
+}
+
+/*------------------------------------------------
  * io_handler_pia1_crb()
  *
- *  IO call-back handler 0xFF23 PIA0-B Control register
+ *  IO call-back handler 0xFF23 PIA1-B Control register
  *  responding the audio multiplexer select bits
  *
  *  param:  Call address, data byte for write operation, and operation type

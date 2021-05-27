@@ -26,7 +26,7 @@ typedef struct
         char        lfn[FAT32_LONG_FILE_NAME];
         char        sfn[FAT32_DOS_FILE_NAME];
         uint32_t    cluster_chain_head;
-        uint32_t    file_size;
+        int         file_size;
     } dir_entry_t;
 
 typedef enum
@@ -46,7 +46,9 @@ int         fat32_parse_dir(uint32_t start_cluster, dir_entry_t *directory_list,
 
 int         fat32_fopen(dir_entry_t *directory_entry);
 void        fat32_fclose(void);
-int         fat32_fseek(uint32_t byte_position);
+int         fat32_fseek(int byte_position);
 int         fat32_fread(uint8_t *buffer, int buffer_length);
+int         fat32_fstat(void);
+int         fat32_ftell(void);
 
 #endif  /* __SDFAT32_H__ */

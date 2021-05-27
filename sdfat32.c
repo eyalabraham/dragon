@@ -123,9 +123,9 @@ static struct file_param_t
 {
     int         file_is_open;       // File open flag
     uint32_t    file_start_cluster; // Cluster number of the first cluster of the file
-    uint32_t    current_position;   // Current byte position of read pointer
+    int         current_position;   // Current byte position of read pointer
     uint32_t    current_cluster;    // Current cluster to read
-    uint32_t    file_size;          // File size in bytes
+    int         file_size;          // File size in bytes
     uint32_t    cached_cluster;     // The last successful cluster that was read, 0 is none
 } file_parameters;
 
@@ -366,7 +366,7 @@ void fat32_fclose(void)
  *  Param:  0-based index file byte position
  *  Return: 1=seek ok, 0=error
  */
-int fat32_fseek(uint32_t byte_position)
+int fat32_fseek(int byte_position)
 {
     int         i;
     int         cluster_index;          // Cluster count in the chain
@@ -483,6 +483,38 @@ int fat32_fread(uint8_t *buffer, int buffer_length)
     }
 
     return byte_count;
+}
+
+/* -------------------------------------------------------------
+ * fat32_fstat()
+ *
+ *  Returns to current file size.
+ *
+ *  Param:  None
+ *  Return: Current file read position, or '-1' if file is closed.
+ */
+int fat32_fstat(void)
+{
+    if ( file_parameters.file_is_open )
+        return file_parameters.file_size;
+
+    return -1;
+}
+
+/* -------------------------------------------------------------
+ * fat32_ftell()
+ *
+ *  Returns to current file read position.
+ *
+ *  Param:  None
+ *  Return: Current file read position, or '-1' if file is closed.
+ */
+int fat32_ftell(void)
+{
+    if ( file_parameters.file_is_open )
+        return file_parameters.current_position;
+
+    return -1;
 }
 
 /* -------------------------------------------------------------
