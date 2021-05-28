@@ -17,6 +17,7 @@
 #include    "mem.h"
 #include    "vdg.h"
 #include    "rpi.h"
+#include    "printf.h"
 
 #include    "dragon/font.h"
 #include    "dragon/semigraph.h"
@@ -203,7 +204,7 @@ void vdg_render(void)
         fbp = rpi_fb_resolution(resolution[current_mode][RES_HORZ_PIX], resolution[current_mode][RES_VERT_PIX]);
         if ( fbp == 0L )
         {
-            rpi_halt("Frame buffer error vdg_render()");
+            rpi_halt("vdg_render() Frame buffer error");
         }
 
         prev_mode = current_mode;
@@ -272,13 +273,6 @@ void vdg_render(void)
 
                 for ( element = 0; element < 8; element++)
                 {
-/*
-                    color = (int)((vdg_data >> (7 - element)) & 0x01) * (4 * (pia_video_mode & PIA_COLOR_SET) + 1);
-                    if ( color > 0 )
-                        color = colors[(color - 1)];
-                    else
-                        color = FB_BLACK;
-*/
                     if ( (vdg_data >> (7 - element)) & 0x01 )
                     {
                         if ( pia_video_mode & PIA_COLOR_SET )
@@ -312,11 +306,12 @@ void vdg_render(void)
         case SEMI_GRAPHICS_24:
         case ALPHA_EXTERNAL:
         case DMA:
-            rpi_halt("Mode not supported vdg_render()");
+            printf("vdg_render() Mode not supported %d\n", current_mode);
+            rpi_halt();
             break;
 
         default:
-            rpi_halt("Illegal mode vdg_render()");
+            rpi_halt("vdg_render() Illegal mode");
     }
 
     //rpi_testpoint_off();
@@ -673,7 +668,7 @@ static video_mode_t vdg_get_mode(void)
     }
     else
     {
-        rpi_halt("Cannot resolve mode vdg_get_mode()");
+        rpi_halt("vdg_get_mode() Cannot resolve mode");
     }
 
     return mode;

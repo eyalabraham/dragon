@@ -52,7 +52,7 @@
 
     /* ROM code load
      */
-    printf("Loading code... ");
+    printf("Loading ROM ... ");
     i = 0;
     while ( code[i] != -1 )
     {
@@ -66,7 +66,7 @@
     /* Emulation initialization
      */
     if ( rpi_gpio_init() == -1 )
-        rpi_halt("Failed to initialize GPIO rpi_gpio_init()");;
+        rpi_halt("main() Failed to initialize GPIO");
 
     sam_init();
     pia_init();

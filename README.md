@@ -60,7 +60,7 @@ This repository contains all the intermediate implementation steps and tags them
 
 - (next up) CPU execution clock "pacing"
 - (next up) Release tag 1.0 RPi Zero bare-metal version
-- (next up) CAS file loader/manager from SD card
+- Release tag 0.11 CAS file loader/manager from SD card
 - [Release tag 0.10](https://github.com/eyalabraham/dragon/releases/tag/v0.10) ROM image file loader/manager from SD card. Emulator reset button, refactoring, preparation for bare-metal, and bug fixes.
 - [Release tag 0.9](https://github.com/eyalabraham/dragon/releases/tag/v0.9) Joystick support and a change to RPi Zero.
 - [Release tag 0.8](https://github.com/eyalabraham/dragon/releases/tag/v0.8) Dragon 32 computer emulation with sound.
