@@ -61,9 +61,7 @@ void     rpi_enable(void);
 void     rpi_testpoint_on(void);
 void     rpi_testpoint_off(void);
 
-void     rpi_halt(char *msg);
-
-void     _putchar(char character);
+void     rpi_halt(void);
 
 sd_error_t rpi_sd_init(void);
 sd_error_t rpi_sd_read_block(uint32_t lba, uint8_t *buffer, uint32_t length);

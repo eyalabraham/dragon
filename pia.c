@@ -17,6 +17,7 @@
 #include    "pia.h"
 #include    "sdfat32.h"
 #include    "loader.h"
+#include    "printf.h"
 
 /* -----------------------------------------
    Local definitions
@@ -97,10 +98,10 @@ static int     function_key = 0;
     PA6 | ENT   CLR   BRK   N/C   N/C   N/C   N/C  SHFT |
     PA7 | Comparator input                              |   MSB
 */
-static uint8_t scan_code_table[85][2] = {
+static uint8_t scan_code_table[81][2] = {
         // Column     Row
         { 0xff,       255 }, // #0
-        { 0xff,       255 },
+        { 0b11111011,   6 }, //      Break (ESC key)
         { 0b11111101,   0 }, //      1
         { 0b11111011,   0 }, //      2
         { 0b11110111,   0 }, //      3
@@ -180,10 +181,6 @@ static uint8_t scan_code_table[85][2] = {
         { 0xff,       255 },
         { 0xff,       255 },
         { 0b11101111,   5 }, // #80  Down arrow
-        { 0xff,       255 },
-        { 0xff,       255 },
-        { 0xff,       255 },
-        { 0b11111011,   6 }, // #84  Break
 };
 
 static uint8_t keyboard_rows[KBD_ROWS] = {
@@ -354,10 +351,13 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
             /* Sanity check
              */
             if ( (row_index = scan_code_table[(scan_code & 0x7f)][1]) == 255 )
-                rpi_halt("Illegal scan code io_handler_pia0_pb()");
+            {
+                printf("io_handler_pia0_pb(): Illegal scan code.\n");
+                rpi_halt();
+            }
 
             /* Generate row bit patterns emulating row key closures
-             * and match to 'make' or 'break' codes (bit.7 or scan code)
+             * and match to 'make' or 'break' codes (bit.7 of scan code)
              */
             row_switch_bits = scan_code_table[(scan_code & 0x7f)][0];
 

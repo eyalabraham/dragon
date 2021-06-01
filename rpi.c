@@ -147,13 +147,13 @@ int rpi_gpio_init(void)
 {
     if (!bcm2835_init())
     {
-      printf("bcm2835_init failed. Are you running as root??\n");
+      printf("rpi_gpio_init(): bcm2835_init failed. Are you running as root??\n");
       return -1;
     }
 
     if (!bcm2835_spi_begin())
     {
-      printf("bcm2835_spi_begin failed. Are you running as root??\n");
+      printf("rpi_gpio_init(): bcm2835_spi_begin failed. Are you running as root??\n");
       bcm2835_close();
       return -1;
     }
@@ -225,7 +225,7 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
         fbfd = open("/dev/fb0", O_RDWR);
         if (fbfd == -1)
         {
-            printf("%s Cannot open frame buffer /dev/fb0\n", __FUNCTION__);
+            printf("rpi_fb_init(): Cannot open frame buffer /dev/fb0\n");
             return 0;
         }
     }
@@ -240,7 +240,7 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
     // Select graphics mode
     if ( fb_set_tty(1) )
     {
-        printf("%s Could not set tty0 mode.\n", __FUNCTION__);
+        printf("rpi_fb_init(): Could not set tty0 mode.\n");
         return 0;
     }
 
@@ -329,8 +329,6 @@ int rpi_joystk_comp(void)
      *      TST     PIA0DA          ; read result value, comparator output in bit 7
      *
      * A 20uSec delay seems to stabilize the joystick ADC readings.
-     *
-     * TODO: Try bcm2835_st_delay()?
      *
      */
     bcm2835_delayMicroseconds(20);
@@ -473,9 +471,9 @@ void rpi_testpoint_off(void)
  *  param:  Message
  *  return: None
  */
-void rpi_halt(char *msg)
+void rpi_halt(void)
 {
-    printf("%s\n", msg);
+    printf("HALT\n");
     assert(0);
 }
 
@@ -533,14 +531,14 @@ sd_error_t rpi_sd_init(void)
 
     if ( sd_wait_ready() == 0 )                             // Check MISO is high (card DO=1)
     {
-        printf("rpi_sd_init() Time out waiting for SD ready state.\n");
+        printf("rpi_sd_init(): Time out waiting for SD ready state.\n");
         return SD_FAIL;
     }
 
     sd_response = sd_send_cmd(SD_GO_IDLE_STATE, 0);
     if ( sd_response != SD_R1_IDLE )
     {
-      printf("rpi_sd_init() SD card failed SD_GO_IDLE_STATE.\n");
+      printf("rpi_sd_init(): SD card failed SD_GO_IDLE_STATE.\n");
       return SD_FAIL;
     }
 
@@ -551,14 +549,14 @@ sd_error_t rpi_sd_init(void)
             sd_response = sd_send_cmd(SD_APP_CMD, 0);
             if ( sd_response == SD_FAILURE )
             {
-              printf("rpi_sd_init() SD card failed SD_APP_CMD.\n");
+              printf("rpi_sd_init(): SD card failed SD_APP_CMD.\n");
               return SD_FAIL;
             }
 
             sd_response = sd_send_cmd(SD_APP_SEND_OP_COND, 0);
             if ( sd_response == SD_FAILURE )
             {
-              printf("rpi_sd_init() SD card failed SD_APP_SEND_OP_COND.\n");
+              printf("rpi_sd_init(): SD card failed SD_APP_SEND_OP_COND.\n");
               return SD_FAIL;
             }
         }
@@ -566,14 +564,14 @@ sd_error_t rpi_sd_init(void)
 
     if ( sd_response != SD_R1_READY )
     {
-      printf("rpi_sd_init() SD card failed SD_APP_SEND_OP_COND.\n");
+      printf("rpi_sd_init(): SD card failed SD_APP_SEND_OP_COND.\n");
       return SD_TIMEOUT;
     }
 
     sd_response = sd_send_cmd(SD_SET_BLOCKLEN, SD_BLOCK_SIZE);
     if ( sd_response != SD_R1_READY )
     {
-      printf("rpi_sd_init() SD card failed SD_SET_BLOCKLEN.\n");
+      printf("rpi_sd_init(): SD card failed SD_SET_BLOCKLEN.\n");
       return SD_FAIL;
     }
 
@@ -671,7 +669,7 @@ uint8_t sd_send_cmd(int cmd, uint32_t arg)
      */
     if ( sd_wait_ready() == 0 )
     {
-        printf("sd_send_cmd() Time out waiting for SD ready state.\n");
+        printf("sd_send_cmd(): Time out waiting for SD ready state.\n");
         return SD_FAILURE;
     }
 
@@ -849,7 +847,7 @@ static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
     // Get variable screen information
     if (ioctl(fbfd, FBIOGET_VSCREENINFO, &var_info))
     {
-        printf("%s Error reading variable screen info\n", __FUNCTION__);
+        printf("fb_set_resolution(): Error reading variable screen info.\n");
         return 0L;
     }
 
@@ -860,7 +858,7 @@ static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
     var_info.yres_virtual = y_pix;
     if ( ioctl(fbfd, FBIOPUT_VSCREENINFO, &var_info) )
     {
-        printf("%s Error setting variable information\n", __FUNCTION__);
+        printf("fb_set_resolution(): Error setting variable information.\n");
     }
 
     printf("Display info: %dx%d, %d bpp\n",
@@ -870,7 +868,7 @@ static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
     // Get fixed screen information
     if ( ioctl(fbfd, FBIOGET_FSCREENINFO, &fix_info) )
     {
-        printf("%s Error reading fixed information\n", __FUNCTION__);
+        printf("fb_set_resolution(): Error reading fixed information.\n");
         return 0L;
     }
 
@@ -884,7 +882,7 @@ static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
 
     if ( screen_size > fix_info.smem_len )
     {
-        printf("%s screen_size over buffer limit\n", __FUNCTION__);
+        printf("fb_set_resolution(): screen_size over buffer limit.\n");
         return 0L;
     }
 
@@ -896,7 +894,7 @@ static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
 
     if ( (int)fbp == -1 )
     {
-        printf("%s Failed to mmap()\n", __FUNCTION__);
+        printf("fb_set_resolution(): Failed to mmap()\n");
         return 0;
     }
 
@@ -921,7 +919,7 @@ static int fb_set_tty(const int mode)
 
     if ( !console_fd )
     {
-        printf("%s Could not open console.\n", __FUNCTION__);
+        printf("fb_set_tty(): Could not open console.\n");
         return -1;
     }
 
@@ -929,7 +927,7 @@ static int fb_set_tty(const int mode)
     {
         if (ioctl( console_fd, KDSETMODE, KD_GRAPHICS))
         {
-            printf("%s Could not set console to KD_GRAPHICS mode.\n", __FUNCTION__);
+            printf("fb_set_tty(): Could not set console to KD_GRAPHICS mode.\n");
             result = -1;
         }
     }
@@ -937,7 +935,7 @@ static int fb_set_tty(const int mode)
     {
         if (ioctl( console_fd, KDSETMODE, KD_TEXT))
         {
-            printf("%s Could not set console to KD_TEXT mode.\n", __FUNCTION__);
+            printf("fb_set_tty(): Could not set console to KD_TEXT mode.\n");
             result = -1;
         }
     }

@@ -1,6 +1,6 @@
 # Dragon 32 computer emulator
 
-This project implements the software and the hardware needed to emulate a [Dragon 32 computer](https://en.wikipedia.org/wiki/Dragon_32/64). The end goal is to run the emulation on a bare-metal Raspberry Pi (RPi) platform with some external peripherals. Development would be done on a Raspberry Pi Linux distribution. The Dragon was my first computer when home/personal computers started to emerge in the mid 80s, and it is also one of the simplest to emulate. Other emulators exist, [including XROR](http://www.6809.org.uk/xroar/), but I decided to build my own as an exercise in RPi bare-metal programming.
+This project implements the software and the hardware needed to emulate a [Dragon 32 computer](https://en.wikipedia.org/wiki/Dragon_32/64). The end goal is to run the emulation on a bare-metal Raspberry Pi (RPi) platform with some external peripherals. Development would be done on a Raspberry Pi Linux distribution. The Dragon was my first computer when home/personal computers started to emerge in the mid 80s, and it is also one of the simplest to emulate. Other emulators exist, [including XROR](http://www.6809.org.uk/xroar/), but I decided to build my own as another exercise in RPi bare-metal programming.
 
 ## Resources
 
@@ -58,9 +58,8 @@ Schematics of external emulator hardware (KiCAD drawing)[https://github.com/eyal
 
 This repository contains all the intermediate implementation steps and tags them for easy retrieval. Each step builds on the functionality of its predecessors and maintains backward compatibility. The latest release is listed first:
 
-- (next up) CPU execution clock "pacing"
-- (next up) Release tag 1.0 RPi Zero bare-metal version
-- Release tag 0.11 CAS file loader/manager from SD card
+- Release tag 1.0 Complete emulator for Raspberry Pi under RaspiOS "Buster"
+- [Release tag 0.11](https://github.com/eyalabraham/dragon/releases/tag/v0.11) CAS file loader/manager from SD card
 - [Release tag 0.10](https://github.com/eyalabraham/dragon/releases/tag/v0.10) ROM image file loader/manager from SD card. Emulator reset button, refactoring, preparation for bare-metal, and bug fixes.
 - [Release tag 0.9](https://github.com/eyalabraham/dragon/releases/tag/v0.9) Joystick support and a change to RPi Zero.
 - [Release tag 0.8](https://github.com/eyalabraham/dragon/releases/tag/v0.8) Dragon 32 computer emulation with sound.

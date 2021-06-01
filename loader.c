@@ -118,11 +118,11 @@ void loader(void)
         if ( ( i = rpi_sd_init()) == SD_OK )
         {
             sd_card_initialized = 1;
-            printf("loader() SD card initialized.\n");
+            printf("SD card initialized.\n");
         }
         else
         {
-            printf("loader() SD initialization failed (%d).\n", i);
+            printf("loader(): SD initialization failed (%d).\n", i);
 
             text_write(0, 0, MSG_SD_ERROR);
             text_write(TERMINAL_STATUS_ROW, 0, MSG_EXIT);
@@ -138,13 +138,13 @@ void loader(void)
      */
     if ( ( i = fat32_init()) == FAT_OK )
     {
-        printf("loader() FAT32 initialized.\n");
+        printf("FAT32 initialized.\n");
     }
     else
     {
         sd_card_initialized = 0;
 
-        printf("loader() FAT32 initialization failed (%d).\n", i);
+        printf("loader(): FAT32 initialization failed (%d).\n", i);
 
         text_write(0, 0, MSG_FAT32_ERROR);
         text_write(TERMINAL_STATUS_ROW, 0, MSG_EXIT);

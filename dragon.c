@@ -23,7 +23,6 @@
    Dragon 32 ROM image
 ----------------------------------------- */
 #include    "dragon/dragon.h"
-#include    "dragon/doodle-bug.h"
 
 /* -----------------------------------------
    Module definition
@@ -50,6 +49,14 @@
     int     i;
     int     emulator_escape_code;
 
+    if ( rpi_gpio_init() == -1 )
+    {
+        rpi_halt();
+    }
+
+    printf("Dragon 32 %s %s\n", __DATE__, __TIME__);
+    printf("GPIO initialized.\n");
+
     /* ROM code load
      */
     printf("Loading ROM ... ");
@@ -65,9 +72,6 @@
 
     /* Emulation initialization
      */
-    if ( rpi_gpio_init() == -1 )
-        rpi_halt("main() Failed to initialize GPIO");
-
     sam_init();
     pia_init();
     vdg_init();

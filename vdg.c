@@ -150,7 +150,8 @@ void vdg_init(void)
     fbp = rpi_fb_init(SCREEN_WIDTH_PIX, SCREEN_HEIGHT_PIX);
     if ( fbp == 0L )
     {
-        rpi_halt("Frame buffer error vdg_init()");
+        printf("vdg_init(): Frame buffer error.\n");
+        rpi_halt();
     }
 
     /* Default startup mode of Dragon 32
@@ -204,7 +205,8 @@ void vdg_render(void)
         fbp = rpi_fb_resolution(resolution[current_mode][RES_HORZ_PIX], resolution[current_mode][RES_VERT_PIX]);
         if ( fbp == 0L )
         {
-            rpi_halt("vdg_render() Frame buffer error");
+            printf("vdg_render(): Frame buffer error.\n");
+            rpi_halt();
         }
 
         prev_mode = current_mode;
@@ -306,12 +308,15 @@ void vdg_render(void)
         case SEMI_GRAPHICS_24:
         case ALPHA_EXTERNAL:
         case DMA:
-            printf("vdg_render() Mode not supported %d\n", current_mode);
+            printf("vdg_render(): Mode not supported %d\n", current_mode);
             rpi_halt();
             break;
 
         default:
-            rpi_halt("vdg_render() Illegal mode");
+            {
+                printf("vdg_render(): Illegal mode.\n");
+                rpi_halt();
+            }
     }
 
     //rpi_testpoint_off();
@@ -668,7 +673,8 @@ static video_mode_t vdg_get_mode(void)
     }
     else
     {
-        rpi_halt("vdg_get_mode() Cannot resolve mode");
+        printf("vdg_get_mode(): Cannot resolve mode.\n");
+        rpi_halt();
     }
 
     return mode;

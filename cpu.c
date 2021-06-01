@@ -1430,7 +1430,7 @@ cpu_run_state_t cpu_get_state(cpu_state_t* cpu_state)
  * cpu_get_menmonic()
  *
  *  Return a pointer to a constant string representing the
- *  op-code's mnemonic as the input memory address.
+ *  op-code's mnemonic at the input memory address.
  *
  *  param:  Memory address
  *  return: Pointer to constant mnemonic string
@@ -1438,7 +1438,7 @@ cpu_run_state_t cpu_get_state(cpu_state_t* cpu_state)
 const char* cpu_get_menmonic(uint16_t address)
 {
     int     i, op_code;
-    char   *mnemonic;
+    char   *mnemonic = 0;
 
     op_code = mem_read(address);
 
@@ -2720,8 +2720,8 @@ static void do_branch(int long_short, uint16_t effective_address, int *cycles)
  */
 static int get_eff_addr(int op_code, int *cycles, int *bytes)
 {
-    uint16_t   *index_reg;
     uint16_t    operand;
+    uint16_t   *index_reg = 0;
     uint16_t    effective_addr = 0;
 
     switch ( machine_code[op_code].mode )
@@ -2766,6 +2766,13 @@ static int get_eff_addr(int op_code, int *cycles, int *bytes)
                 case 0x60:
                     index_reg = &cpu.s;
                     break;
+            }
+
+            if ( index_reg == 0 )
+            {
+                cpu.cpu_state = CPU_EXCEPTION;
+                cpu.exception_line_num = __LINE__;
+                break;
             }
 
             /* Check if 5-bit offset is in the post-byte
