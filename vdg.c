@@ -88,7 +88,6 @@ typedef enum
 /* -----------------------------------------
    Module static functions
 ----------------------------------------- */
-static void vdg_put_pixel_fb(int color, int x, int y);
 static void vdg_draw_char(int c, int col, int row);
 static void vdg_draw_semig6(int c, int col, int row);
 static video_mode_t vdg_get_mode(void);
@@ -165,12 +164,6 @@ void vdg_init(void)
  *
  *  Render video display.
  *
- *  TODO Consider writing to frame buffer 32-bit at a time instead of 8-bit
- *       per write. This may reduce render time. Profile render timing
- *       with GPIO pin.
- *       vdg_render() measured as running every 20mSec (~50Hz)
- *       with a render time of approximately 20uSec.
- *
  *  param:  Nothing
  *  return: Nothing
  */
@@ -186,14 +179,14 @@ void vdg_render(void)
     int     vdg_mem_offset;
     int     fb_offset = 0;
 
-    //rpi_testpoint_on();
-
     /* Set the refresh interval
      */
     if ( (rpi_system_timer() - last_refresh_time) < VDG_REFRESH_INTERVAL )
     {
         return;
     }
+
+    rpi_testpoint_on();
 
     last_refresh_time = rpi_system_timer();
 
@@ -212,7 +205,7 @@ void vdg_render(void)
         prev_mode = current_mode;
     }
 
-    /* Render to frame buffer with screen content
+    /* Render screen content to RPi frame buffer
      */
     vdg_mem_base = video_ram_offset << 9;
 
@@ -319,7 +312,7 @@ void vdg_render(void)
             }
     }
 
-    //rpi_testpoint_off();
+    rpi_testpoint_off();
 }
 
 /*------------------------------------------------
@@ -379,30 +372,6 @@ void vdg_set_mode_pia(uint8_t pia_mode)
 }
 
 /*------------------------------------------------
- * vdg_put_pixel()
- *
- *  Put a pixel in the screen frame buffer
- *  Lowest level function to draw a pixel in the frame buffer.
- *  Assumes an 8-bit per pixel video mode is selected, and
- *  the calling function has calculated the correct (x,y) pixel coordinates.
- *  The Dragon VDG always uses a fixed 256x192 screen resolution.
- *
- * param:  pixel color, x and y coordinates
- * return: none
- *
- */
-static void vdg_put_pixel_fb(int color, int x, int y)
-{
-    int pixel_offset;
-
-    /* Calculate the pixel's byte offset inside the buffer
-     * and update the frame buffer.
-     */
-    pixel_offset = x + y * SCREEN_WIDTH_PIX;
-    *((uint8_t*)(fbp + pixel_offset)) = (uint8_t) color;    // The same as 'fbp[pix_offset] = value'
-}
-
-/*------------------------------------------------
  * vdg_draw_char()
  *
  * Draw a text of Semigraphics-4 character in the screen frame buffer.
@@ -424,68 +393,39 @@ static void vdg_put_pixel_fb(int color, int x, int y)
  */
 void vdg_draw_char(int c, int col, int row)
 {
-    uint8_t     pix_pos, bit_pattern;
-    int         px, py;
-    int         char_row, char_col, char_index;
-    int         fg_color, bg_color;
+    uint8_t         pix_pos, bit_pattern;
+    int             px, py;
+    int             char_row, char_col, char_index;
+    uint32_t        fg_color, bg_color;
 
-    /* Convert text col and row to pixel positions
-     * and adjust for non-semigraphics
+    const uint8_t  *bit_pattern_array;
+    uint32_t        byte_position;
+    uint32_t        frame_buffer_index;
+    register        uint32_t    pixel_group;
+
+    /* Common initialization
      */
+    byte_position = 0;
+    pixel_group = 0;
     px = col * FONT_WIDTH;
     py = row * FONT_HEIGHT;
+    bg_color = FB_BLACK;
 
-    /* Output semigraphics characters
-     * code 128 through 255.
+    /* Mode dependent initializations
+     * for text or semigraphics 4:
+     * - Determine foreground and background colors
+     * - Character pattern array
+     * - Character code index to pit pattern array
+     *
      */
     if ( (uint8_t)c & CHAR_SEMI_GRAPHICS )
     {
-        /* Determine colors
-         */
-        bg_color = FB_BLACK;
-        fg_color = colors[(int)((c & 0b01110000) >> 4)];
-
-        /* Character output
-         */
+        fg_color = colors[(((uint8_t)c & 0b01110000) >> 4)];
         char_index = (int)(((uint8_t) c) & SEMI_GRAPH4_MASK);
-
-        for ( char_row = 0; char_row < FONT_HEIGHT; char_row++, py++ )
-        {
-            bit_pattern = semi_graph_4[char_index][char_row];
-
-            pix_pos = 0x80;
-
-            for ( char_col = 0; char_col < FONT_WIDTH; char_col++ )
-            {
-                /* Bit is set in Font, print pixel(s) in text color
-                 */
-                if ( (bit_pattern & pix_pos) )
-                {
-                    vdg_put_pixel_fb(fg_color, (px + char_col), py);
-                }
-                /* Bit is cleared in Font
-                 */
-                else
-                {
-                    vdg_put_pixel_fb(bg_color, (px + char_col), py);
-                }
-
-                /* Move to the next pixel position
-                 */
-                pix_pos = pix_pos >> 1;
-            }
-        }
+        bit_pattern_array = &semi_graph_4[char_index][0];
     }
-
-    /* Output character codes 0 through 127
-     * inverse and non inverse video.
-     */
     else
     {
-        /* Determine colors
-         */
-        bg_color = FB_BLACK;
-
         if ( pia_video_mode & PIA_COLOR_SET )
             fg_color = colors[DEF_COLOR_CSS_1];
         else
@@ -497,35 +437,49 @@ void vdg_draw_char(int c, int col, int row)
             fg_color = bg_color;
             bg_color = char_row;
         }
-
-        /* Character output
-         */
         char_index = (int)(((uint8_t) c) & ~(CHAR_SEMI_GRAPHICS | CHAR_INVERSE));
+        bit_pattern_array = &font_img5x7[char_index][0];
+    }
 
-        for ( char_row = 0; char_row < FONT_HEIGHT; char_row++, py++ )
+    /* Output characters
+     */
+    for ( char_row = 0; char_row < FONT_HEIGHT; char_row++, py++ )
+    {
+        bit_pattern = bit_pattern_array[char_row];
+
+        pix_pos = 0x80;
+
+        for ( char_col = 0; char_col < FONT_WIDTH; char_col++ )
         {
-            bit_pattern = font_img5x7[char_index][char_row];
-
-            pix_pos = 0x80;
-
-            for ( char_col = 0; char_col < FONT_WIDTH; char_col++ )
+            /* Bit is set in Font, print pixel(s) in text color
+             */
+            if ( (bit_pattern & pix_pos) )
             {
-                /* Bit is set in Font, print pixel(s) in text color
-                 */
-                if ( (bit_pattern & pix_pos) )
-                {
-                    vdg_put_pixel_fb(fg_color, (px + char_col), py);
-                }
-                /* Bit is cleared in Font
-                 */
-                else
-                {
-                    vdg_put_pixel_fb(bg_color, (px + char_col), py);
-                }
+                pixel_group += fg_color << byte_position;
+            }
+            /* Bit is cleared in Font
+             */
+            else
+            {
+                pixel_group += bg_color << byte_position;
+            }
 
-                /* Move to the next pixel position
-                 */
-                pix_pos = pix_pos >> 1;
+            /* Move to the next pixel position
+             */
+            pix_pos = pix_pos >> 1;
+
+            /* Render four pixels at once
+             */
+            if ( byte_position == 24 )
+            {
+                frame_buffer_index = px + py * SCREEN_WIDTH_PIX + char_col - 3;
+                *((uint32_t *)(fbp + frame_buffer_index)) = pixel_group;
+                byte_position = 0;
+                pixel_group = 0;
+            }
+            else
+            {
+                byte_position += 8;
             }
         }
     }
@@ -551,7 +505,14 @@ static void vdg_draw_semig6(int c, int col, int row)
     int         char_row, char_col, char_index;
     int         fg_color, bg_color;
 
-    /* Convert text col and row to pixel positions
+    uint32_t    byte_position;
+    uint32_t    frame_buffer_index;
+    register    uint32_t    pixel_group;
+
+    byte_position = 0;
+    pixel_group = 0;
+
+    /* Convert text column and row to pixel positions
      * and adjust for non-semigraphics
      */
     px = col * FONT_WIDTH;
@@ -578,18 +539,32 @@ static void vdg_draw_semig6(int c, int col, int row)
              */
             if ( (bit_pattern & pix_pos) )
             {
-                vdg_put_pixel_fb(fg_color, (px + char_col), py);
+                pixel_group += fg_color << byte_position;
             }
             /* Bit is cleared in Font
              */
             else
             {
-                vdg_put_pixel_fb(bg_color, (px + char_col), py);
+                pixel_group += bg_color << byte_position;
             }
 
             /* Move to the next pixel position
              */
             pix_pos = pix_pos >> 1;
+
+            /* Render four pixels at once
+             */
+            if ( byte_position == 24 )
+            {
+                frame_buffer_index = px + py * SCREEN_WIDTH_PIX + char_col - 3;
+                *((uint32_t *)(fbp + frame_buffer_index)) = pixel_group;
+                byte_position = 0;
+                pixel_group = 0;
+            }
+            else
+            {
+                byte_position += 8;
+            }
         }
     }
 }

@@ -184,6 +184,19 @@ The [SAM chip](https://cdn.hackaday.io/files/1685367210644224/datasheet-MC6883_S
 
 The VDG is Motorola's [MC6847](https://en.wikipedia.org/wiki/Motorola_6847) video chip. Since the VDG's video memory is part of the 64K Bytes of the CPU's memory map, then writes to that region are reflected into the RPi's video frame buffer by the IO handler of the VDG. The handler will adapt the writes to the RPi frame buffer based on the VDG/SAM modes for text or graphics. The Dragon computer video display emulation is implemented in the VDG module by the ```vdg_render()``` function, by accessing the Raspberry Pi Frame Buffer.
 
+#### ```vdg_render()``` performance improvements
+
+Changed rendering routine to take advantage of 32-bit architecture for RPi frame-buffer writes. Only the text screen modes benefit from this change and reduce the render time by 25%. Graphics screens had no change or showed worse timing.
+
+| Function                      | Frame buffer pixels | Baseline  | 32-bit write | 
+|-------------------------------|---------------------|-----------|--------------|
+| Text                          | 49,152              | 4.00 mSec | 2.75 mSec    |
+| Graphics 128x96  BW (PMODE 0) | 12,288              | 0.80 mSec | worse        |
+| Graphics 128x96  C  (PMODE 1) | 12,288              | 1.30 mSec | 1.40 mSec    |
+| Graphics 192x128 BW (PMODE 2) | 49,152              | 2.20 mSec | worse        |
+| Graphics 192x128 C  (PMODE 3) | 49,152              | 3.15 mSec | 3.60 mSec    |
+| Graphics 256x192 BW (PMODE 4) | 49,152              | 3.30 mSec | worse        |
+
 #### 6821 parallel IO (PIA)
 
 The Dragon computer's IO was provided by two MC6821 Peripheral Interface Adapters (PIAs).

@@ -74,21 +74,21 @@ dragon: $(OBJDRAGON)
 # requires ssh key setup to avoid using password authentication
 #------------------------------------------------------------------------------------
 sync:
-	rsync -vrh $(SRCDIR)/*  pi@10.0.0.16:/home/pi/dragon
-#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make spi"
-	ssh pi@10.0.0.16 "cd /home/pi/dragon && make dragon"
-#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make emu09"
-#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make mon09"
-#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make basic09"
-#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make intr09"
-#	ssh pi@10.0.0.13 "cd /home/pi/Documents/dragon && make profile"
+	rsync -vrh $(SRCDIR)/*  pi@dragon32:/home/pi/dragon
+#	ssh pi@dragon32 "cd /home/pi/Documents/dragon && make spi"
+	ssh pi@dragon32 "cd /home/pi/dragon && make dragon"
+#	ssh pi@dragon32 "cd /home/pi/Documents/dragon && make emu09"
+#	ssh pi@dragon32 "cd /home/pi/Documents/dragon && make mon09"
+#	ssh pi@dragon32 "cd /home/pi/Documents/dragon && make basic09"
+#	ssh pi@dragon32 "cd /home/pi/Documents/dragon && make intr09"
+#	ssh pi@dragon32 "cd /home/pi/Documents/dragon && make profile"
 
 avr:
-	rsync -vrh ~/data/projects/dragon/code/ps2spi/Release/ps2spi.hex pi@10.0.0.16:/home/pi/dragon
-	ssh pi@10.0.0.16 "cd /home/pi/dragon && sudo avrdude -pt85 -clinuxgpio -C+./scripts/avrdude.rpi.conf -Uflash:w:ps2spi.hex"
+	rsync -vrh ~/data/projects/dragon/code/ps2spi/Release/ps2spi.hex pi@dragon32:/home/pi/dragon
+	ssh pi@dragon32 "cd /home/pi/dragon && sudo avrdude -pt85 -clinuxgpio -C+./scripts/avrdude.rpi.conf -Uflash:w:ps2spi.hex"
 
 rclean:
-	ssh pi@10.0.0.16 "cd /home/pi/dragon && make clean"
+	ssh pi@dragon32 "cd /home/pi/dragon && make clean"
 
 #------------------------------------------------------------------------------------
 # cleanup
