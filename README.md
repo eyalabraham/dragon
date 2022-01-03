@@ -252,7 +252,7 @@ The software loader/manager interfaces with an SD card that holds Dragon 32 ROM 
 
 This functionality is available only on RPi Zero/W and uses an SD card interface connected to the auxiliary SPI interface (SPI1).
 
-ROM code files are loaded as-is into the Dragon's ROM cartridge memory address space. No auto start is provided, but the BASIC EXEC vector if modified to point to 0xC000, so a simple EXEC from the BASIC prompt will start the ROM code.
+ROM code files are loaded as-is into the Dragon's ROM cartridge memory address space. No auto start is provided, but the BASIC EXEC vector is modified to point to 0xC000, so a simple EXEC from the BASIC prompt will start the ROM code.
 
 CAS files are digital images of old-style tape content and not memeory images. More on [CAS file formats here](https://retrocomputing.stackexchange.com/questions/150/what-format-is-used-for-coco-cassette-tapes/153#153), and [Dragon 32 CAS format here](https://archive.worldofdragon.org/index.php?title=Tape%5CDisk_Preservation#CAS_File_Format). A cassette file can be mounted by the loader (like loading a cassette into a tape player), and then use the BASIC CLOAD or CLOADM commands to do the reading.
 
@@ -271,7 +271,7 @@ CAS files are digital images of old-style tape content and not memeory images. M
 - Dragon sound sources: single-bit
 
 ### Known problems
-- Implement semi-graphic-8, maybe 12 and 24, as some hames use these modes.
+- Implement semi-graphic-8, maybe 12 and 24, as some games use these modes.
 - Joystick drift: check reference voltage. Reduce to TTL output level from 74LS244
 - Change RESET button function to allow complete restart of emulation without power-cycle, such as a long press.
 
