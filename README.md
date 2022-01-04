@@ -1,6 +1,6 @@
 # Dragon 32 computer emulator
 
-This project implements the software and the hardware needed to emulate a [Dragon 32 computer](https://en.wikipedia.org/wiki/Dragon_32/64). The end goal is to run the emulation on a bare-metal Raspberry Pi (RPi) platform with some external peripherals. Development would be done on a Raspberry Pi Linux distribution. The Dragon was my first computer when home/personal computers started to emerge in the mid 80s, and it is also one of the simplest to emulate. Other emulators exist, [including XROR](http://www.6809.org.uk/xroar/), but I decided to build my own as another exercise in RPi bare-metal programming.
+[This project](https://sites.google.com/site/eyalabraham/dragon-32-computer) implements the software and the hardware needed to emulate a [Dragon 32 computer](https://en.wikipedia.org/wiki/Dragon_32/64). The end goal is to run the emulation on a bare-metal Raspberry Pi (RPi) platform with some external peripherals. Development would be done on a Raspberry Pi Linux distribution. The Dragon was my first computer when home/personal computers started to emerge in the mid 80s, and it is also one of the simplest to emulate. Other emulators exist, [including XROR](http://www.6809.org.uk/xroar/), but I decided to build my own as another exercise in RPi bare-metal programming.
 
 ## Resources
 
@@ -271,9 +271,10 @@ CAS files are digital images of old-style tape content and not memeory images. M
 - Dragon sound sources: single-bit
 
 ### Known problems
-- Implement semi-graphic-8, maybe 12 and 24, as some games use these modes.
+
+- Improve sound generation through DAC while performing video refresh
 - Joystick drift: check reference voltage. Reduce to TTL output level from 74LS244
-- Change RESET button function to allow complete restart of emulation without power-cycle, such as a long press.
+- Improve keyboard scan call-back.
 
 ## Files
 
