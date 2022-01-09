@@ -327,14 +327,15 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
          * to read the keyboard scan code.
          */
         scan_code = (uint8_t) rpi_keyboard_read();
+        printf("io_handler_pia0_pb(): scan_code %d\n", scan_code);
 
-        //if ( (scan_code & 0x7f) >= 59 && (scan_code & 0x7f) <= 68 )
-        if ( scan_code >= 59 && scan_code <= 68 )
+        if ( (scan_code & 0x7f) >= 59 && (scan_code & 0x7f) <= 68 )
         {
             /* Store special function keys as emulator escapes
              * values between 1 an 10 for F1 to F10 keys
+             * while discarding 'break' codes.
              */
-            if ( function_key == 0 )
+            if ( !(scan_code & 0x80) && (function_key == 0) )
                 function_key = scan_code - SCAN_CODE_F1;
         }
         else if ( scan_code != 0 )
