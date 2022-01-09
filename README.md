@@ -197,6 +197,64 @@ Changed rendering routine to take advantage of 32-bit architecture for RPi frame
 | Graphics 192x128 C  (PMODE 3) | 49,152              | 3.15 mSec | 3.60 mSec    |
 | Graphics 256x192 BW (PMODE 4) | 49,152              | 3.30 mSec | worse        |
 
+### Emulator main loop performance improvements
+
+The main loop of the emulator is responsible for five tasks: execute CPU machine code from program memory, check state of reset button, check state of F1 function key for emulation escape, render video memory to RPi frame buffer, and generate VSYNC IRQ at 50Hz.  
+
+Originally, the emulation produced distorted audio that I attributed to the average 3mSec pause at a 50Hz rate of the frame buffer updates done by vdg_render(). After measuring the emulation loop I discovered that the loop takes ~12uSec to complete, but the cpu_run() function completes at an average of 1uSec. This means that the emulator is running at a slow 300KHz equivalent CPU, and since audio is directly produced by CPU writes to the DAC this produced distorted audio. Most of the 12uSec interval is spent by vdg_render() and pia_vsync_irq() that were timed at about 4.8uSec each due to calls to clock() to retrieve system clock tick count.  
+
+The change removed all calls to clock() and the 50Hz execution trigger of vdg_render() and pia_vsync_irq() is brute-forced by a simple counting cycles. Since each cpu_run() completes at an average time of 1uSec, adding the extra functions now extends the emulation loop to about 1.5uSec. The MC6809E CPU executes machine code utilizing an average of 3 to 4 clock cycles, so the emulation is now equivalent to about 3x faster than a real CPU, and a slow down empty loop is added to waste time and extend the loop up to about 4uSec total.  
+
+Video is refreshed approximately every 20mSec (50Hz). The average 3mSec pause in CPU execution every 20mSec adds a 50Hz undertone that is largely filtered by the high-pass at the audio DAC output.  
+
+The new emulator loop includes CPU execution (line 95), dead-time padding (line 99), test reset button state (lines 101 to 120), emulation escape (lines 122 to 124), vdg_render() and pia_vsync_irq() timing to match 50Hz (lines 126 to 131).  
+
+```
+ 91    for (;;)
+ 92    {
+ 93        rpi_testpoint_on();
+ 94
+ 95        cpu_run();
+ 96
+ 97        rpi_testpoint_off();
+ 98
+ 99        for ( i = 0; i < CPU_TIME_WASTE; i++);
+100
+101        switch ( get_reset_state(LONG_RESET_DELAY) )
+102        {
+103            case 0:
+104                cpu_reset(0);
+105                break;
+106
+107            case 2:
+108                /* Cold start flag set to value that is not 0x55
+109                 */
+110                mem_write(0x71, 0);
+111                printf("Force cold restart.\n");
+112                /* no break */
+113
+114            case 1:
+115                cpu_reset(1);
+116                break;
+117
+118            default:
+119                printf("main(): unknown reset state.\n");
+120        }
+121
+122        emulator_escape_code = pia_function_key();
+123        if ( emulator_escape_code == ESCAPE_LOADER )
+124            loader();
+125
+126        vdg_render_cycles++;
+127        if ( vdg_render_cycles == VDG_RENDER_CYCLES )
+128        {
+129            vdg_render();
+130            pia_vsync_irq();
+131            vdg_render_cycles = 0;
+132        }
+133    }
+```
+
 #### 6821 parallel IO (PIA)
 
 The Dragon computer's IO was provided by two MC6821 Peripheral Interface Adapters (PIAs).
@@ -254,14 +312,13 @@ This functionality is available only on RPi Zero/W and uses an SD card interface
 
 ROM code files are loaded as-is into the Dragon's ROM cartridge memory address space. No auto start is provided, but the BASIC EXEC vector is modified to point to 0xC000, so a simple EXEC from the BASIC prompt will start the ROM code.
 
-CAS files are digital images of old-style tape content and not memeory images. More on [CAS file formats here](https://retrocomputing.stackexchange.com/questions/150/what-format-is-used-for-coco-cassette-tapes/153#153), and [Dragon 32 CAS format here](https://archive.worldofdragon.org/index.php?title=Tape%5CDisk_Preservation#CAS_File_Format). A cassette file can be mounted by the loader (like loading a cassette into a tape player), and then use the BASIC CLOAD or CLOADM commands to do the reading.
+CAS files are digital images of old-style tape content and not memory images. More on [CAS file formats here](https://retrocomputing.stackexchange.com/questions/150/what-format-is-used-for-coco-cassette-tapes/153#153), and [Dragon 32 CAS format here](https://archive.worldofdragon.org/index.php?title=Tape%5CDisk_Preservation#CAS_File_Format). A cassette file can be mounted by the loader (like loading a cassette into a tape player), and then use the BASIC CLOAD or CLOADM commands to do the reading.
 
 ### TODOs
 
 #### System
 
 - Cartridge interrupt for cartridge code auto start
-- Clock interrupts for CPU execution pacing
 
 #### Emulation extras
 
@@ -272,7 +329,6 @@ CAS files are digital images of old-style tape content and not memeory images. M
 
 ### Known problems
 
-- Improve sound generation through DAC while performing video refresh
 - Joystick drift: check reference voltage. Reduce to TTL output level from 74LS244
 - Improve keyboard scan call-back.
 

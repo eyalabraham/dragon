@@ -451,7 +451,7 @@ void rpi_testpoint_on(void)
     bcm2835_gpio_write(PRI_TEST_POINT, HIGH);
 }
 /*------------------------------------------------
- * rpi_testpoint_on()
+ * rpi_testpoint_off()
  *
  *  Set test point to logic '0'
  *
@@ -829,7 +829,8 @@ static uint16_t sd_get_crc16(const uint8_t *buf, int len )
 /********************************************************************
  * fb_set_resolution()
  *
- *  Set screen resolution and return pointer to screen memory buffer
+ *  Set screen resolution and return pointer to screen memory buffer.
+ *  Function sets frame buffer to 8-bits per-pixel.
  *
  *  param:  Frame buffer device handle, horizontal and vertical resolution
  *          in pixels

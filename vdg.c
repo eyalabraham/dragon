@@ -188,13 +188,15 @@ void vdg_init(void)
  * vdg_render()
  *
  *  Render video display.
+ *  A full screen rendering is performed at every invocation on the function.
+ *  The function should be called periodically and will execute a screen refresh only
+ *  if 20 milliseconds of more have elapsed since the last refresh (50Hz).
  *
  *  param:  Nothing
  *  return: Nothing
  */
 void vdg_render(void)
 {
-    static  uint32_t    last_refresh_time = 0;
     int     col, row, c;
 
     uint8_t vdg_data;
@@ -203,17 +205,6 @@ void vdg_render(void)
     int     vdg_mem_base;
     int     vdg_mem_offset;
     int     fb_offset = 0;
-
-    /* Set the refresh interval
-     */
-    if ( (rpi_system_timer() - last_refresh_time) < VDG_REFRESH_INTERVAL )
-    {
-        return;
-    }
-
-    rpi_testpoint_on();
-
-    last_refresh_time = rpi_system_timer();
 
     /* VDG/SAM mode settings
      */
@@ -341,8 +332,6 @@ void vdg_render(void)
                 rpi_halt();
             }
     }
-
-    rpi_testpoint_off();
 }
 
 /*------------------------------------------------

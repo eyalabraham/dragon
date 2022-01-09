@@ -222,24 +222,15 @@ void pia_init(void)
 /*------------------------------------------------
  * pia_hsync_irq()
  *
- *  Assert an IRQ interrupt at Field Sync refresh rate
+ *  Assert an IRQ interrupt to signal Field Sync refresh.
+ *  This function should be called periodically from the VDG
+ *  rendering function.
  *
  *  param:  Nothing
  *  return: Nothing
  */
 void pia_vsync_irq(void)
 {
-    static  uint32_t    last_vsync_time = 0;
-
-    /* Check interrupt cycle time
-     */
-    if ( (rpi_system_timer() - last_vsync_time) < PIA_VSYNC_INTERVAL )
-    {
-        return;
-    }
-
-    last_vsync_time = rpi_system_timer();
-
     /* Assert interrupt if enabled
      */
     if ( pia0_cb1_int_enabled )

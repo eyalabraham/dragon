@@ -29,10 +29,10 @@
 ----------------------------------------- */
 #define     DRAGON_ROM_START        0x8000
 #define     DRAGON_ROM_END          0xfeff
-
 #define     ESCAPE_LOADER           1       // Pressing F1
-
-#define     LONG_RESET_DELAY        1500000 // micro-seconds to force cold start
+#define     LONG_RESET_DELAY        1500000 // Micro-seconds to force cold start
+#define     VDG_RENDER_CYCLES       4450    // CPU cycle count for ~50mSec screen refresh rate
+#define     CPU_TIME_WASTE          300     // Results in a CPU cycle of 4uSec
 
 /* -----------------------------------------
    Module functions
@@ -51,6 +51,7 @@ static int get_reset_state(uint32_t time);
 {
     int     i;
     int     emulator_escape_code;
+    int     vdg_render_cycles = 0;
 
     if ( rpi_gpio_init() == -1 )
     {
@@ -89,7 +90,11 @@ static int get_reset_state(uint32_t time);
 
     for (;;)
     {
+        //rpi_testpoint_on();
         cpu_run();
+        //rpi_testpoint_off();
+
+        for ( i = 0; i < CPU_TIME_WASTE; i++);
 
         switch ( get_reset_state(LONG_RESET_DELAY) )
         {
@@ -116,9 +121,15 @@ static int get_reset_state(uint32_t time);
         if ( emulator_escape_code == ESCAPE_LOADER )
             loader();
 
-        vdg_render();
-
-        pia_vsync_irq();
+        vdg_render_cycles++;
+        if ( vdg_render_cycles == VDG_RENDER_CYCLES )
+        {
+            //rpi_testpoint_on();
+            vdg_render();
+            //rpi_testpoint_off();
+            pia_vsync_irq();
+            vdg_render_cycles = 0;
+        }
     }
 
 #if (RPI_BARE_METAL==0)
