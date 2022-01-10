@@ -327,7 +327,6 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
          * to read the keyboard scan code.
          */
         scan_code = (uint8_t) rpi_keyboard_read();
-        printf("io_handler_pia0_pb(): scan_code %d\n", scan_code);
 
         if ( (scan_code & 0x7f) >= 59 && (scan_code & 0x7f) <= 68 )
         {

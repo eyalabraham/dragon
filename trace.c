@@ -133,7 +133,7 @@ void trace_print_registers(cpu_state_t* state)
 
     /* Print opcode mnemonic at PC
      */
-    printf("(%s) ", cpu_get_menmonic(state->last_pc));
+    printf("%04X: (%s) ", state->last_pc, cpu_get_menmonic(state->last_pc));
 
     /* Print opcode and operand bytes
      */
