@@ -1,3 +1,6 @@
+
+> This repository is deprecated. Refer to the refactored Dragon 32 emulator in new repository https://github.com/eyalabraham/dragon32-emu
+
 # Dragon 32 computer emulator
 
 [This project](https://sites.google.com/site/eyalabraham/dragon-32-computer) implements the software and the hardware needed to emulate a [Dragon 32 computer](https://en.wikipedia.org/wiki/Dragon_32/64). The end goal is to run the emulation on a bare-metal Raspberry Pi (RPi) platform with some external peripherals. Development would be done on a Raspberry Pi Linux distribution. The Dragon was my first computer when home/personal computers started to emerge in the mid 80s, and it is also one of the simplest to emulate. Other emulators exist, [including XROR](http://www.6809.org.uk/xroar/), but I decided to build my own as another exercise in RPi bare-metal programming.

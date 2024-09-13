@@ -88,6 +88,7 @@ typedef enum
     GRAPHICS_6C,        // 4 color  128x192 6144   PMODE3
     GRAPHICS_6R,        // 2 color  256x192 6144   PMODE4
     DMA,                // 2 color  256x192 6144
+    UNDEFINED,          // Undefined
 } video_mode_t;
 
 /* -----------------------------------------
@@ -744,7 +745,7 @@ static void vdg_draw_semig_ext(video_mode_t mode, int video_mem_base, int text_b
  */
 static video_mode_t vdg_get_mode(void)
 {
-    video_mode_t mode;
+    video_mode_t mode = UNDEFINED;
 
     if ( sam_video_mode == 7 )
     {
